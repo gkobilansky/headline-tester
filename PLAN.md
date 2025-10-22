@@ -1,7 +1,7 @@
 # Embed Snippet & Widget Implementation Plan
 
 ## Overview
-Reuse the existing chat experience as the iframe widget surface and deliver a single-line loader script that sites can embed. The widget should honor the `headlinetester` reveal flag while we lay the groundwork for future admin controls.
+Reuse the existing chat experience as the iframe widget surface and deliver a single-line loader script that sites can embed. The host page decides when to reveal the widget (for example, admins visiting with `headlinetester=1`), while regular visitors never see it by default.
 
 ## Current State Analysis
 - Auth middleware currently forces unauthenticated traffic through guest sign-in and redirects non-guests away from `/login` and `/register` (`middleware.ts:5-40`, `app/(auth)/auth.ts:34-95`).
@@ -9,8 +9,8 @@ Reuse the existing chat experience as the iframe widget surface and deliver a si
 - No widget route, embed script, or domain token model exists yet; only generic chat capabilities are present (`lib/db/schema.ts:16-173`, `PRD.md` context).
 
 ## Desired End State
-- `/widget` serves a minimized chat experience that stays hidden unless `headlinetester=1` (or a future control message) is present; requests validate a public token before rendering.
-- A small loader script (e.g., `/widget/embed.js`) creates the iframe, appends the reveal flag, and exposes a `window.HeadlineTesterWidget` control stub.
+- `/widget` serves a minimized chat experience that defaults to hidden and can be revealed via query flag or `postMessage`; requests validate a public token before rendering.
+- A small loader script (e.g., `/widget/embed.js`) creates the iframe, reads host-page context (query string, cookie, or future admin signal), and either appends the reveal flag or sends a `show` control message. It exposes a `window.HeadlineTesterWidget` control stub.
 - Basic `postMessage` scaffolding links host page and iframe for later admin interactions.
 
 ### Key Discoveries:
@@ -49,7 +49,7 @@ export default function WidgetLayout({ children }) {
 
 #### 2. Widget Page  
 **File**: `app/(widget)/page.tsx` *(new)*  
-**Changes**: Fetch query params, evaluate `headlinetester` flag, render `<Chat isWidget />` when visible, otherwise return placeholder/empty frame. Pass through widget token from query.
+**Changes**: Fetch query params, evaluate `headlinetester` flag, and hand control to a client-side widget shell that listens for `headlineTester:*` messages. Pass through widget token from query.
 
 #### 3. Chat Component Adjustments  
 **File**: `components/chat.tsx:36-249`  
@@ -72,7 +72,7 @@ export default function WidgetLayout({ children }) {
 
 #### Manual Verification
 - [ ] `/widget?headlinetester=1` renders chat without sidebar elements.
-- [ ] `/widget` stays hidden when flag absent.
+- [ ] Without a `headlineTester:show` message, `/widget` renders nothing visible; adding `headlinetester=1` continues to pre-open for manual testing.
 - [ ] Middleware no longer redirects widget loads.
 - [ ] Embedding iframe manually confirms layout stability.
 
@@ -83,13 +83,13 @@ export default function WidgetLayout({ children }) {
 ## Phase 2: Loader Snippet & Bootstrapping
 
 ### Overview
-Ship the single-line loader script that injects the iframe, appends the reveal flag, and exposes basic controls.
+Ship the single-line loader script that injects the iframe, inspects the host page for the admin reveal signal, and exposes basic controls.
 
 ### Changes Required:
 
 #### 1. Loader Script  
 **File**: `public/widget/embed.js` *(new)*  
-**Changes**: Self-invoking script that reads `data-token`, creates a container + iframe pointing to `/widget?token=...&headlinetester=1`, styles default positioning, and stubs a global control API.
+**Changes**: Self-invoking script that reads `data-token`, creates a container + iframe pointing to `/widget?token=...`, applies default positioning, inspects the host page for `headlinetester=1` (or a persisted admin flag), and either appends the reveal query to the iframe URL or sends a `show` message. Stub a global control API.
 
 #### 2. Optional Dynamic Route  
 **File**: `app/widget/embed/route.ts` *(new, optional)*  
@@ -107,7 +107,7 @@ Ship the single-line loader script that injects the iframe, appends the reveal f
 - [ ] `pnpm build`
 
 #### Manual Verification
-- [ ] Embedding `<script src=".../widget/embed.js" data-token="demo"></script>` shows widget when host URL includes `?headlinetester=1`.
+- [ ] Embedding `<script src=".../widget/embed.js" data-token="demo"></script>` shows the widget when the host URL includes `?headlinetester=1` (host page) or after calling `HeadlineTesterWidget.show()`.
 - [ ] Script handles missing token gracefully.
 - [ ] Multiple inclusions remain idempotent.
 
@@ -132,7 +132,7 @@ Stub token validation, pass config into the widget, and wire basic `postMessage`
 
 #### 3. PostMessage Skeleton  
 **Files**: `public/widget/embed.js`, `app/(widget)/page.tsx`  
-**Changes**: Parent script listens for `headlineTester:ready`; iframe posts ready event and handles `headlineTester:show`/`hide`.
+**Changes**: Parent script listens for `headlineTester:ready`; iframe posts ready event and handles `headlineTester:show`/`hide`, so reveal can be triggered without altering iframe URL.
 
 #### 4. Visibility Hook  
 **File**: `components/chat.tsx` or new hook  
@@ -162,11 +162,11 @@ Stub token validation, pass config into the widget, and wire basic `postMessage`
 - `Chat` widget mode snapshot to ensure UI changes.
 
 ### Integration Tests
-- Extend route tests to cover `/widget` and `/widget?headlinetester=1`.
+- Extend route tests to cover `/widget` default hidden state and `/widget?headlinetester=1`.
 - Playwright scenario embedding iframe (if feasible) or at least loading widget route.
 
 ### Manual Testing Steps
-1. Embed script in static HTML; toggle `?headlinetester=1` and observe behavior.
+1. Embed script in static HTML; toggle `?headlinetester=1` (host page) or call `HeadlineTesterWidget.show()/hide()` and observe behavior.
 2. Trigger `window.HeadlineTesterWidget.show()/hide()` and verify.
 3. Confirm middleware/path access for loader + iframe.
 4. Test script execution order (async/deferred) to ensure resilience.

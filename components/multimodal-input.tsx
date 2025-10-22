@@ -63,6 +63,7 @@ function PureMultimodalInput({
   selectedModelId,
   onModelChange,
   usage,
+  isWidget = false,
 }: {
   chatId: string;
   input: string;
@@ -79,6 +80,7 @@ function PureMultimodalInput({
   selectedModelId: string;
   onModelChange?: (modelId: string) => void;
   usage?: AppUsage;
+  isWidget?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
@@ -130,7 +132,9 @@ function PureMultimodalInput({
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
 
   const submitForm = useCallback(() => {
-    window.history.replaceState({}, "", `/chat/${chatId}`);
+    if (!isWidget) {
+      window.history.replaceState({}, "", `/chat/${chatId}`);
+    }
 
     sendMessage({
       role: "user",
@@ -166,6 +170,7 @@ function PureMultimodalInput({
     width,
     chatId,
     resetHeight,
+    isWidget,
   ]);
 
   const uploadFile = useCallback(async (file: File) => {
@@ -331,6 +336,7 @@ function PureMultimodalInput({
           ) : (
             <PromptInputSubmit
               className="size-8 rounded-full bg-primary text-primary-foreground transition-colors duration-200 hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground"
+              data-testid="send-button"
               disabled={!input.trim() || uploadQueue.length > 0}
               status={status}
             >
@@ -359,6 +365,9 @@ export const MultimodalInput = memo(
       return false;
     }
     if (prevProps.selectedModelId !== nextProps.selectedModelId) {
+      return false;
+    }
+    if (prevProps.isWidget !== nextProps.isWidget) {
       return false;
     }
 
