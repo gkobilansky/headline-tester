@@ -311,7 +311,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+}
+
+body.widget-body {
+  background-color: transparent !important;
 }

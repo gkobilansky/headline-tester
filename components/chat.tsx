@@ -24,7 +24,7 @@ import type { Vote } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import type { AppUsage } from "@/lib/usage";
-import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { Artifact } from "./artifact";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
@@ -41,6 +41,8 @@ export function Chat({
   isReadonly,
   autoResume,
   initialLastContext,
+  isWidget = false,
+  widgetToken,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -49,6 +51,8 @@ export function Chat({
   isReadonly: boolean;
   autoResume: boolean;
   initialLastContext?: AppUsage;
+  isWidget?: boolean;
+  widgetToken?: string;
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -135,9 +139,11 @@ export function Chat({
       });
 
       setHasAppendedQuery(true);
-      window.history.replaceState({}, "", `/chat/${id}`);
+      if (!isWidget) {
+        window.history.replaceState({}, "", `/chat/${id}`);
+      }
     }
-  }, [query, sendMessage, hasAppendedQuery, id]);
+  }, [query, sendMessage, hasAppendedQuery, id, isWidget]);
 
   const { data: votes } = useSWR<Vote[]>(
     messages.length >= 2 ? `/api/vote?chatId=${id}` : null,
@@ -154,14 +160,30 @@ export function Chat({
     setMessages,
   });
 
+  const containerClassName = cn(
+    "overscroll-behavior-contain flex min-w-0 touch-pan-y flex-col",
+    isWidget ? "h-full bg-transparent" : "h-dvh bg-background"
+  );
+
+  const inputWrapperClassName = cn(
+    "sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 px-2 pb-3 md:px-4 md:pb-4",
+    isWidget ? "bg-transparent" : "bg-background"
+  );
+
   return (
     <>
-      <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
-        <ChatHeader
-          chatId={id}
-          isReadonly={isReadonly}
-          selectedVisibilityType={initialVisibilityType}
-        />
+      <div
+        className={containerClassName}
+        data-widget={isWidget ? "true" : undefined}
+        data-widget-token={isWidget ? (widgetToken ?? "") : undefined}
+      >
+        {!isWidget && (
+          <ChatHeader
+            chatId={id}
+            isReadonly={isReadonly}
+            selectedVisibilityType={initialVisibilityType}
+          />
+        )}
 
         <Messages
           chatId={id}
@@ -175,7 +197,7 @@ export function Chat({
           votes={votes}
         />
 
-        <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
+        <div className={inputWrapperClassName}>
           {!isReadonly && (
             <MultimodalInput
               attachments={attachments}
@@ -197,23 +219,25 @@ export function Chat({
         </div>
       </div>
 
-      <Artifact
-        attachments={attachments}
-        chatId={id}
-        input={input}
-        isReadonly={isReadonly}
-        messages={messages}
-        regenerate={regenerate}
-        selectedModelId={currentModelId}
-        selectedVisibilityType={visibilityType}
-        sendMessage={sendMessage}
-        setAttachments={setAttachments}
-        setInput={setInput}
-        setMessages={setMessages}
-        status={status}
-        stop={stop}
-        votes={votes}
-      />
+      {!isWidget && (
+        <Artifact
+          attachments={attachments}
+          chatId={id}
+          input={input}
+          isReadonly={isReadonly}
+          messages={messages}
+          regenerate={regenerate}
+          selectedModelId={currentModelId}
+          selectedVisibilityType={visibilityType}
+          sendMessage={sendMessage}
+          setAttachments={setAttachments}
+          setInput={setInput}
+          setMessages={setMessages}
+          status={status}
+          stop={stop}
+          votes={votes}
+        />
+      )}
 
       <AlertDialog
         onOpenChange={setShowCreditCardAlert}
