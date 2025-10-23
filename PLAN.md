@@ -26,7 +26,7 @@ Reuse the existing chat experience as the iframe widget surface and deliver a si
 ## Implementation Approach
 Introduce a new App Router group for the widget, ensure middleware allowlists it, and deliver a static/dynamic embed script. Reuse the chat component in “widget mode,” defer deep token management, and add a `postMessage` hook for future phases.
 
-## Phase 1: Widget Shell & Routing
+## Phase 1: Widget Shell & Routing *(Completed)*
 
 ### Overview
 Create a `/widget` entry point that renders the chat in widget mode, defaults to hidden, and bypasses middleware redirects.
@@ -66,15 +66,15 @@ export default function WidgetLayout({ children }) {
 ### Success Criteria:
 
 #### Automated Verification
-- [ ] `pnpm lint`
+- [x] `pnpm lint`
 - [ ] `pnpm test`
-- [ ] `pnpm build`
+- [x] `pnpm build`
 
 #### Manual Verification
-- [ ] `/widget?headlinetester=1` renders chat without sidebar elements.
-- [ ] Without a `headlineTester:show` message, `/widget` renders nothing visible; adding `headlinetester=1` continues to pre-open for manual testing.
-- [ ] Middleware no longer redirects widget loads.
-- [ ] Embedding iframe manually confirms layout stability.
+- [x] `/widget?headlinetester=1` renders chat without sidebar elements.
+- [x] Without a `headlineTester:show` message, `/widget` renders nothing visible; adding `headlinetester=1` continues to pre-open for manual testing.
+- [x] Middleware no longer redirects widget loads.
+- [x] Embedding iframe manually confirms layout stability.
 
 **Implementation Note**: Pause for manual sign-off after Phase 1 before advancing.
 
@@ -112,6 +112,46 @@ Ship the single-line loader script that injects the iframe, inspects the host pa
 - [ ] Multiple inclusions remain idempotent.
 
 **Implementation Note**: Pause after validation for review before Phase 3.
+
+---
+
+## Phase 4: Test Authoring Flow
+
+### Overview
+Allow admins to create new headline tests from within the widget experience, storing initial variants and linking them to subsequent chat runs.
+
+### Changes Required:
+
+1. **Test Schema & Storage**  
+   **File**: `lib/db/schema.ts`, `lib/db/queries.ts`  
+   **Changes**: Introduce a `tests` table with metadata (id, title, createdBy, variants JSON). Add helper to create tests tied to the widget token.
+
+2. **API Endpoint**  
+   **File**: `app/api/tests/route.ts` *(new)*  
+   **Changes**: POST handler that validates token auth, accepts test details, and persists via the helper. Return created test payload.
+
+3. **Widget UI Entry Point**  
+   **File**: `components/widget-root.tsx` / `components/chat.tsx`  
+   **Changes**: Provide a primary CTA (e.g., “Create Test”) that opens a lightweight form to capture headline variants and description, then calls the API.
+
+4. **Chat Context Integration**  
+   **File**: `components/chat.tsx` or new hook  
+   **Changes**: When a test is created, add context to the active chat so subsequent messages reference the new test ID.
+
+### Success Criteria:
+
+#### Automated Verification
+- [ ] `pnpm lint`
+- [ ] `pnpm test`
+- [ ] `pnpm build`
+
+#### Manual Verification
+- [ ] Admins can submit a test from the widget demo and see confirmation.
+- [ ] API rejects requests without a valid widget token.
+- [ ] Created tests are visible via a temporary inspection route or DB query.
+- [ ] Chat responses include the associated test metadata.
+
+**Implementation Note**: Evaluate telemetry needs and add analytics hooks if time permits.
 
 ---
 
