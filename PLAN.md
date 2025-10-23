@@ -83,13 +83,19 @@ export default function WidgetLayout({ children }) {
 ## Phase 2: Loader Snippet & Bootstrapping
 
 ### Overview
-Ship the single-line loader script that injects the iframe, inspects the host page for the admin reveal signal, and exposes basic controls.
+Ship the single-line loader script that injects the iframe, inspects the host page for the admin reveal signal, and exposes basic controls aligned with the `?hlt=1` reveal flow.
 
 ### Changes Required:
 
 #### 1. Loader Script  
 **File**: `public/widget/embed.js` *(new)*  
-**Changes**: Self-invoking script that reads `data-token`, creates a container + iframe pointing to `/widget?token=...`, applies default positioning, inspects the host page for `headlinetester=1` (or a persisted admin flag), and either appends the reveal query to the iframe URL or sends a `show` message. Stub a global control API.
+**Changes**:
+- Publish a self-executing script that site owners embed before `</body>`.
+- Read the `data-token` attribute when present, otherwise fall back to the demo token (`demo`) and build the iframe URL as `/widget?token=<token>`.
+- Create an anchored container, inject the iframe once (protect against duplicate script inclusions), and defer setting `src` until after the DOM is ready.
+- Listen for the iframe’s `headlineTester:ready` event; when fired, check the host `location.search` for `hlt=1` and post a `headlineTester:show` message if present.
+- Expose `window.HeadlineTesterWidget` with `show()` and `hide()` helpers that post the corresponding `headlineTester:*` messages. Queue calls issued before `ready` and flush once the iframe acknowledges.
+- Keep the bundle lightweight (target <5 KB) and ensure styles position the widget consistently in the bottom-right corner without leaking globals.
 
 #### 2. Optional Dynamic Route  
 **File**: `app/widget/embed/route.ts` *(new, optional)*  
@@ -97,7 +103,7 @@ Ship the single-line loader script that injects the iframe, inspects the host pa
 
 #### 3. Docs Update  
 **File**: `README.md` or new `docs/widget.md`  
-**Changes**: Document embed usage and snippet syntax.
+**Changes**: Document the paste-in snippet, explain the `?hlt=1` reveal convention, and describe the `HeadlineTesterWidget.show()/hide()` controls.
 
 ### Success Criteria:
 
@@ -107,7 +113,7 @@ Ship the single-line loader script that injects the iframe, inspects the host pa
 - [ ] `pnpm build`
 
 #### Manual Verification
-- [ ] Embedding `<script src=".../widget/embed.js" data-token="demo"></script>` shows the widget when the host URL includes `?headlinetester=1` (host page) or after calling `HeadlineTesterWidget.show()`.
+- [ ] Embedding `<script src=".../widget/embed.js" data-token="demo"></script>` shows the widget when the host URL includes `?hlt=1` (host page) or after calling `HeadlineTesterWidget.show()`.
 - [ ] Script handles missing token gracefully.
 - [ ] Multiple inclusions remain idempotent.
 
