@@ -203,6 +203,7 @@ export function Chat({
               attachments={attachments}
               chatId={id}
               input={input}
+              isWidget={isWidget}
               messages={messages}
               onModelChange={setCurrentModelId}
               selectedModelId={currentModelId}
@@ -214,7 +215,6 @@ export function Chat({
               status={status}
               stop={stop}
               usage={usage}
-              isWidget={isWidget}
             />
           )}
         </div>

@@ -68,3 +68,16 @@ pnpm dev
 ```
 
 Your app template should now be running on [localhost:3000](http://localhost:3000).
+
+## Headline Tester Widget (Phase 2)
+
+The Phase&nbsp;2 loader script lives at `public/widget/embed.js` and can be
+embedded via:
+
+```html
+<script src="https://app.headlinetester.com/widget/embed.js" data-token="demo"></script>
+```
+
+Reveal the widget by visiting the host page with `?hlt=1` or by calling
+`window.HeadlineTesterWidget.show()`. Additional details and local development
+instructions are documented in [`docs/widget.md`](docs/widget.md).

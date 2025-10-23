@@ -31,8 +31,6 @@ function PureMessages({
   setMessages,
   regenerate,
   isReadonly,
-  // eslint-disable-next-line unused-imports/no-unused-vars
-  selectedModelId,
 }: MessagesProps) {
   const {
     containerRef: messagesContainerRef,

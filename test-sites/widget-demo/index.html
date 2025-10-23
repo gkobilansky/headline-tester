@@ -6,253 +6,101 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>Headline Tester Widget Demo</title>
+    <title>Headline Tester Embed Demo</title>
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: light;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
           sans-serif;
       }
 
       body {
         margin: 0;
-        padding: 32px 24px 64px;
-        background: radial-gradient(circle at top, #f8fafc, #f1f5f9);
-        color: #0f172a;
         min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at top, #f8fafc, #eef2ff);
+        color: #0f172a;
       }
 
-      .page {
-        max-width: 960px;
-        margin: 0 auto;
+      main {
+        padding: 48px 32px 56px;
+        border-radius: 24px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(24px);
+        max-width: 560px;
+        box-shadow: 0 24px 80px rgba(15, 23, 42, 0.18);
+        text-align: center;
       }
 
       h1 {
-        margin-bottom: 12px;
-        font-weight: 600;
+        margin: 0 0 16px;
+        font-size: clamp(32px, 4vw, 42px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
       }
 
       p {
-        margin-top: 0;
-        margin-bottom: 20px;
-        line-height: 1.5;
-        max-width: 720px;
-      }
-
-      .controls {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        align-items: center;
-        margin-bottom: 24px;
-      }
-
-      label {
-        font-weight: 500;
-        display: flex;
-        gap: 8px;
-        align-items: center;
-      }
-
-      input[type="text"] {
-        padding: 6px 10px;
-        border-radius: 6px;
-        border: 1px solid rgba(15, 23, 42, 0.15);
-        min-width: 220px;
-        font-size: 14px;
-      }
-
-      button {
-        padding: 8px 16px;
-        border: none;
-        border-radius: 9999px;
-        background: #2563eb;
-        color: white;
-        font-weight: 600;
-        cursor: pointer;
-      }
-
-      button:disabled {
-        background: #cbd5f5;
-        cursor: not-allowed;
-      }
-
-      .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 14px;
-        border-radius: 9999px;
-        background: rgba(15, 23, 42, 0.08);
+        margin: 0 0 18px;
+        line-height: 1.6;
+        font-size: 16px;
         color: rgba(15, 23, 42, 0.75);
-        font-size: 13px;
-        font-weight: 600;
-        transition: background 0.2s ease, color 0.2s ease;
       }
 
-      .status-pill[data-tone="ready"] {
-        background: rgba(37, 99, 235, 0.1);
-        color: #1d4ed8;
-      }
-
-      .status-pill[data-tone="error"] {
-        background: rgba(220, 38, 38, 0.1);
-        color: #b91c1c;
-      }
-
-      .iframe-shell {
-        position: relative;
-        width: min(400px, 100%);
-        height: 600px;
-        border-radius: 20px;
-        overflow: hidden;
-        box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
-        background: white;
-      }
-
-      iframe {
-        width: 100%;
-        height: 100%;
-        border: 0;
-      }
-
-      .note {
-        margin-top: 18px;
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+          monospace;
         font-size: 14px;
-        color: rgba(15, 23, 42, 0.7);
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: rgba(15, 23, 42, 0.06);
+        color: rgba(15, 23, 42, 0.85);
+      }
+
+      .hint {
+        margin-top: 24px;
+        font-size: 14px;
+        color: rgba(15, 23, 42, 0.6);
+      }
+
+      a {
+        color: #2563eb;
+        font-weight: 600;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
       }
     </style>
   </head>
   <body>
-    <div class="page">
-      <h1>Headline Tester Widget Demo</h1>
+    <main>
+      <h1>Test Headline Variants Faster</h1>
       <p>
-        Start <code>pnpm dev</code> in the project root so the widget iframe can
-        load from <code>http://localhost:3000</code>. Use the controls below to
-        tweak the token or toggle the widget visibility to mimic how a host
-        page would control the embed.
+        Embed Headline Tester on any page, then visit with
+        <code>?hlt=1</code> to reveal the on-site assistant instantly.
       </p>
-
-      <div class="controls">
-        <label>
-          Token
-          <input
-            id="token-input"
-            type="text"
-            value="demo"
-            placeholder="Optional widget token"
-          />
-        </label>
-        <label>
-          <input id="toggle-launcher" type="checkbox" checked />
-          Show launcher bubble
-        </label>
-        <label>
-          <input id="toggle-open" type="checkbox" />
-          Open chat immediately
-        </label>
-        <button id="reload-iframe">Reload iframe</button>
-        <span id="status-pill" class="status-pill" aria-live="polite"
-          >Waiting for widget…</span
-        >
-      </div>
-
-      <div class="iframe-shell">
-        <iframe
-          id="widget-frame"
-          title="Headline Tester Widget"
-          allow="clipboard-write"
-        ></iframe>
-      </div>
-
-      <p class="note">
-        Use the controls to send <code>headlineTester:show</code> or
-        <code>headlineTester:hide</code> messages. This mirrors how admins can
-        reveal the widget while regular visitors never see it.
+      <p>
+        Paste the loader before <code>&lt;/body&gt;</code> on your own site or
+        use the snippet below while iterating locally:
       </p>
-    </div>
+      <p>
+        <code>&lt;script src="http://localhost:3000/widget/embed.js"
+          data-token="demo"&gt;&lt;/script&gt;</code>
+      </p>
+      <p class="hint">
+        Try opening this page with
+        <a href="?hlt=1">?hlt=1</a> to see the widget bubble appear automatically.
+      </p>
+    </main>
 
-    <script>
-      const frame = document.getElementById("widget-frame");
-      const tokenInput = document.getElementById("token-input");
-      const toggleLauncher = document.getElementById("toggle-launcher");
-      const toggleOpen = document.getElementById("toggle-open");
-      const reloadButton = document.getElementById("reload-iframe");
-      const statusPill = document.getElementById("status-pill");
-      let widgetReady = false;
-      let pendingVisibility = null;
-
-      function buildSrc() {
-        const params = new URLSearchParams();
-        const token = tokenInput.value.trim();
-        if (token) {
-          params.set("token", token);
-        }
-        return `http://localhost:3000/widget${params.toString() ? `?${params}` : ""}`;
-      }
-
-      function setStatus(text, tone = "idle") {
-        statusPill.textContent = text;
-        statusPill.dataset.tone = tone;
-      }
-
-      function postVisibility(show, open) {
-        if (!frame.contentWindow) {
-          return;
-        }
-        const payload = show
-          ? { type: "headlineTester:show", open }
-          : { type: "headlineTester:hide" };
-        frame.contentWindow.postMessage(payload, "*");
-      }
-
-      function syncVisibility() {
-        pendingVisibility = {
-          show: toggleLauncher.checked,
-          open: toggleOpen.checked,
-        };
-
-        if (widgetReady) {
-          postVisibility(pendingVisibility.show, pendingVisibility.open);
-          pendingVisibility = null;
-        }
-      }
-
-      function reload() {
-        widgetReady = false;
-        setStatus("Waiting for widget…", "idle");
-        frame.src = buildSrc();
-        syncVisibility();
-      }
-
-      reload();
-
-      window.addEventListener("message", (event) => {
-        if (event.source !== frame.contentWindow) {
-          return;
-        }
-        const data = event.data;
-        if (data && data.type === "headlineTester:ready") {
-          widgetReady = true;
-          setStatus("Widget ready", "ready");
-          if (pendingVisibility) {
-            postVisibility(pendingVisibility.show, pendingVisibility.open);
-            pendingVisibility = null;
-          } else {
-            syncVisibility();
-          }
-        }
-      });
-
-      reloadButton.addEventListener("click", reload);
-      tokenInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          reload();
-        }
-      });
-      toggleLauncher.addEventListener("change", syncVisibility);
-      toggleOpen.addEventListener("change", syncVisibility);
-    </script>
+    <script
+      src="http://localhost:3001/widget/embed.js"
+      data-token="demo"
+      async
+    ></script>
   </body>
 </html>
