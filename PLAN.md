@@ -130,13 +130,13 @@ Allow admins to create new headline tests from within the widget experience, sto
    **File**: `app/api/tests/route.ts` *(new)*  
    **Changes**: POST handler that validates token auth, accepts test details, and persists via the helper. Return created test payload.
 
-3. **Widget UI Entry Point**  
-   **File**: `components/widget-root.tsx` / `components/chat.tsx`  
-   **Changes**: Provide a primary CTA (e.g., “Create Test”) that opens a lightweight form to capture headline variants and description, then calls the API.
+3. **Widget UI Entry Point & Embed Context**  
+   **File**: `components/widget-root.tsx` / `components/chat.tsx` / `public/widget/embed.js`  
+   **Changes**: Provide a primary CTA (e.g., “Create Test”) that opens a lightweight form to capture headline variants and description, then calls the API. Extend the embed snippet to collect host DOM context (current headline, CTA targets, path) and post it to the iframe after the ready event; plumb that payload into chat requests so the assistant can reference real page data.
 
 4. **Chat Context Integration**  
    **File**: `components/chat.tsx` or new hook  
-   **Changes**: When a test is created, add context to the active chat so subsequent messages reference the new test ID.
+   **Changes**: When a test is created, add context to the active chat so subsequent messages reference the new test ID. Include host DOM context from the embed snippet with each message so the assistant can summarize the current headline before suggesting variants.
 
 ### Success Criteria:
 
