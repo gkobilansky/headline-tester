@@ -1,30 +1,11 @@
-import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
-import { extname, join, normalize, resolve } from "node:path";
-import { parse } from "node:url";
 
-const LEADING_DOT_SLASH_REGEX = /^(\.\.[/\\])+/;
-
-const ROOT = resolve(process.cwd(), "test-sites/widget-demo");
 const PORT = Number.parseInt(process.env.WIDGET_DEMO_PORT ?? "4000", 10);
-
-const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".ico": "image/x-icon",
-};
-
-const server = createServer(async (request, response) => {
-  const url = request.url ?? "/";
-  const { pathname = "/" } = parse(url);
-
+const server = createServer((_request, response) => {
+  response.statusCode = 200;
+  response.setHeader("Content-Type", "text/plain; charset=utf-8");
+  response.end("Widget demo server is running.\n");
+});
 
 server.listen(PORT, () => {
   console.log(
