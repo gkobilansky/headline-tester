@@ -13,7 +13,7 @@ export type WidgetHeadlineContext = {
   found: boolean;
 };
 
-type WidgetHeadlineControlsProps = {
+export type WidgetHeadlineControlsProps = {
   context: WidgetHeadlineContext;
   status: "idle" | "pending" | "success" | "error";
   error: string | null;

@@ -72,3 +72,12 @@ handshake completes, so you do not need to wait on load events manually.
   page.
 - Future phases will replace the demo token with domain-scoped validation and
   extend the control channel (e.g. structured configuration, context payloads).
+
+## 5. Start a Headline Test from the Chat
+
+Opening the widget now drops visitors into the chat stream first. The headline
+editor panel appears once an admin clicks **I want to start a new headline
+test**, keeping the headline controls colocated with the rest of the
+conversation. The chat automatically reveals the editor after the first
+headline update succeeds or fails, so admins always see status feedback without
+losing their place in the transcript.

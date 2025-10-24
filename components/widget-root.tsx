@@ -4,8 +4,8 @@ import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chat } from "@/components/chat";
 import {
-  WidgetHeadlineControls,
   type WidgetHeadlineContext,
+  type WidgetHeadlineControlsProps,
 } from "@/components/widget-headline-controls";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { cn, generateUUID } from "@/lib/utils";
@@ -63,6 +63,7 @@ export function WidgetRoot({
     "idle" | "pending" | "success" | "error"
   >("idle");
   const [headlineError, setHeadlineError] = useState<string | null>(null);
+  const [showHeadlineControls, setShowHeadlineControls] = useState(false);
   const chatIdRef = useRef<string>();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const pendingRequestIdRef = useRef<string | null>(null);
@@ -385,7 +386,42 @@ export function WidgetRoot({
     );
   }, [collapsed]);
 
-  const isHeadlinePending = headlineStatus === "pending";
+  const headlineControls = useMemo<WidgetHeadlineControlsProps>(
+    () => ({
+      context: headlineContext,
+      status: headlineStatus,
+      error: headlineError,
+      isPending: headlineStatus === "pending",
+      onApply: applyHeadlineUpdate,
+      onReset: resetHeadline,
+    }),
+    [
+      headlineContext,
+      headlineStatus,
+      headlineError,
+      applyHeadlineUpdate,
+      resetHeadline,
+    ]
+  );
+
+  const handleStartHeadlineTest = useCallback(() => {
+    setShowHeadlineControls(true);
+  }, []);
+
+  useEffect(() => {
+    if (headlineStatus !== "idle" && !showHeadlineControls) {
+      setShowHeadlineControls(true);
+    }
+  }, [headlineStatus, showHeadlineControls]);
+
+  const widgetHeadlineStarter = useMemo(
+    () => ({
+      showControls: showHeadlineControls,
+      onStart: handleStartHeadlineTest,
+      controls: headlineControls,
+    }),
+    [showHeadlineControls, handleStartHeadlineTest, headlineControls]
+  );
 
   return (
     <div
@@ -409,16 +445,6 @@ export function WidgetRoot({
             <XIcon aria-hidden="true" className="size-4" />
           </button>
           <div className="flex h-full flex-col pt-12">
-            <div className="px-4 pb-3">
-              <WidgetHeadlineControls
-                context={headlineContext}
-                error={headlineError}
-                isPending={isHeadlinePending}
-                onApply={applyHeadlineUpdate}
-                onReset={resetHeadline}
-                status={headlineStatus}
-              />
-            </div>
             <div className="flex-1 min-h-0">
               <Chat
                 autoResume={false}
@@ -429,6 +455,7 @@ export function WidgetRoot({
                 isReadonly={false}
                 isWidget
                 key={chatId}
+                widgetHeadlineStarter={widgetHeadlineStarter}
                 widgetToken={widgetToken}
               />
             </div>

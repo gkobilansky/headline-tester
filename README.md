@@ -80,4 +80,7 @@ embedded via:
 
 Reveal the widget by visiting the host page with `?hlt=1` or by calling
 `window.HeadlineTesterWidget.show()`. Additional details and local development
-instructions are documented in [`docs/widget.md`](docs/widget.md).
+instructions are documented in [`docs/widget.md`](docs/widget.md). Inside the
+widget, admins kick off the headline editor from the chat stream by selecting
+the **I want to start a new headline test** call-to-action; the detailed flow is
+covered in the docs.

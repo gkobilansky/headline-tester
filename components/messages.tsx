@@ -10,6 +10,10 @@ import { useDataStream } from "./data-stream-provider";
 import { Conversation, ConversationContent } from "./elements/conversation";
 import { Greeting } from "./greeting";
 import { PreviewMessage, ThinkingMessage } from "./message";
+import {
+  WidgetHeadlineStarter,
+  type WidgetHeadlineStarterConfig,
+} from "./widget-headline-starter";
 
 type MessagesProps = {
   chatId: string;
@@ -21,6 +25,8 @@ type MessagesProps = {
   isReadonly: boolean;
   isArtifactVisible: boolean;
   selectedModelId: string;
+  isWidget?: boolean;
+  widgetHeadlineStarter?: WidgetHeadlineStarterConfig;
 };
 
 function PureMessages({
@@ -31,6 +37,8 @@ function PureMessages({
   setMessages,
   regenerate,
   isReadonly,
+  isWidget = false,
+  widgetHeadlineStarter,
 }: MessagesProps) {
   const {
     containerRef: messagesContainerRef,
@@ -67,6 +75,10 @@ function PureMessages({
       <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
         <ConversationContent className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
           {messages.length === 0 && <Greeting />}
+
+          {isWidget && widgetHeadlineStarter ? (
+            <WidgetHeadlineStarter {...widgetHeadlineStarter} />
+          ) : null}
 
           {messages.map((message, index) => (
             <PreviewMessage
@@ -133,6 +145,37 @@ export const Messages = memo(PureMessages, (prevProps, nextProps) => {
     return false;
   }
   if (!equal(prevProps.votes, nextProps.votes)) {
+    return false;
+  }
+  if (prevProps.isWidget !== nextProps.isWidget) {
+    return false;
+  }
+  if (
+    !prevProps.widgetHeadlineStarter &&
+    nextProps.widgetHeadlineStarter
+  ) {
+    return false;
+  }
+  if (
+    prevProps.widgetHeadlineStarter &&
+    !nextProps.widgetHeadlineStarter
+  ) {
+    return false;
+  }
+  if (
+    prevProps.widgetHeadlineStarter?.showControls !==
+    nextProps.widgetHeadlineStarter?.showControls
+  ) {
+    return false;
+  }
+  if (
+    prevProps.widgetHeadlineStarter?.controls.context !==
+      nextProps.widgetHeadlineStarter?.controls.context ||
+    prevProps.widgetHeadlineStarter?.controls.status !==
+      nextProps.widgetHeadlineStarter?.controls.status ||
+    prevProps.widgetHeadlineStarter?.controls.error !==
+      nextProps.widgetHeadlineStarter?.controls.error
+  ) {
     return false;
   }
 

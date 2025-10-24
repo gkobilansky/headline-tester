@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
+import type { WidgetHeadlineControlsProps } from "@/components/widget-headline-controls";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +44,7 @@ export function Chat({
   initialLastContext,
   isWidget = false,
   widgetToken,
+  widgetHeadlineStarter,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -53,6 +55,11 @@ export function Chat({
   initialLastContext?: AppUsage;
   isWidget?: boolean;
   widgetToken?: string;
+  widgetHeadlineStarter?: {
+    showControls: boolean;
+    onStart: () => void;
+    controls: WidgetHeadlineControlsProps;
+  };
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -195,6 +202,8 @@ export function Chat({
           setMessages={setMessages}
           status={status}
           votes={votes}
+          isWidget={isWidget}
+          widgetHeadlineStarter={widgetHeadlineStarter}
         />
 
         <div className={inputWrapperClassName}>
