@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
-import type { WidgetHeadlineControlsProps } from "@/components/widget-headline-controls";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import type { WidgetHeadlineControlsProps } from "@/components/widget-headline-controls";
 import { useArtifactSelector } from "@/hooks/use-artifact";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
@@ -196,13 +196,13 @@ export function Chat({
           chatId={id}
           isArtifactVisible={isArtifactVisible}
           isReadonly={isReadonly}
+          isWidget={isWidget}
           messages={messages}
           regenerate={regenerate}
           selectedModelId={initialChatModel}
           setMessages={setMessages}
           status={status}
           votes={votes}
-          isWidget={isWidget}
           widgetHeadlineStarter={widgetHeadlineStarter}
         />
 

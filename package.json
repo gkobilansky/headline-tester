@@ -1,7 +1,7 @@
 {
-  "name": "ai-chatbot",
-  "version": "3.1.0",
-  "private": true,
+  "name": "headline-tester",
+  "version": "1.0.0",
+  "author": "gkobilansky",
   "scripts": {
     "dev": "next dev --turbo",
     "build": "tsx lib/db/migrate && next build",

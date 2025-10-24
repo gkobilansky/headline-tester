@@ -41,7 +41,7 @@ export function WidgetHeadlineStarter({
     >
       <div className="rounded-xl border border-border/60 bg-background/80 px-3 py-3 shadow-sm backdrop-blur">
         <Button
-          className="inline-flex w-full items-center justify-between gap-3 rounded-lg border border-border/50 bg-background/60 px-4 py-3 text-left text-sm font-medium text-foreground shadow-sm transition hover:bg-accent"
+          className="inline-flex w-full items-center justify-between gap-3 rounded-lg border border-border/50 bg-background/60 px-4 py-3 text-left font-medium text-foreground text-sm shadow-sm transition hover:bg-accent"
           onClick={onStart}
           type="button"
           variant="ghost"

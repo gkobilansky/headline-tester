@@ -3,9 +3,9 @@
 import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chat } from "@/components/chat";
-import {
-  type WidgetHeadlineContext,
-  type WidgetHeadlineControlsProps,
+import type {
+  WidgetHeadlineContext,
+  WidgetHeadlineControlsProps,
 } from "@/components/widget-headline-controls";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { cn, generateUUID } from "@/lib/utils";
@@ -53,12 +53,14 @@ export function WidgetRoot({
 }: WidgetRootProps) {
   const [launcherVisible, setLauncherVisible] = useState(initialReveal);
   const [chatOpen, setChatOpen] = useState(initialReveal);
-  const [headlineContext, setHeadlineContext] = useState<WidgetHeadlineContext>({
-    selector: null,
-    text: null,
-    originalText: null,
-    found: false,
-  });
+  const [headlineContext, setHeadlineContext] = useState<WidgetHeadlineContext>(
+    {
+      selector: null,
+      text: null,
+      originalText: null,
+      found: false,
+    }
+  );
   const [headlineStatus, setHeadlineStatus] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
@@ -243,13 +245,15 @@ export function WidgetRoot({
         if (typed.type === DOM_CONTEXT_EVENT) {
           setHeadlineContext((prev) => {
             const selector =
-              typeof typed.selector === "string" ? typed.selector : prev.selector;
+              typeof typed.selector === "string"
+                ? typed.selector
+                : prev.selector;
             const text =
               typeof typed.text === "string" ? typed.text : prev.text;
             const original =
               typeof typed.originalText === "string"
                 ? typed.originalText
-                : prev.originalText ?? text ?? null;
+                : (prev.originalText ?? text ?? null);
             const found =
               typed.found === false ? false : Boolean(text ?? original);
 
@@ -445,7 +449,7 @@ export function WidgetRoot({
             <XIcon aria-hidden="true" className="size-4" />
           </button>
           <div className="flex h-full flex-col pt-12">
-            <div className="flex-1 min-h-0">
+            <div className="min-h-0 flex-1">
               <Chat
                 autoResume={false}
                 id={chatId}

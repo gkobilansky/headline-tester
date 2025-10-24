@@ -1,7 +1,7 @@
-import { createServer } from "http";
-import { parse } from "url";
-import { promises as fs } from "fs";
-import { extname, join, normalize, resolve } from "path";
+import { promises as fs } from "node:fs";
+import { createServer } from "node:http";
+import { extname, join, normalize, resolve } from "node:path";
+import { parse } from "node:url";
 
 const ROOT = resolve(process.cwd(), "test-sites/widget-demo");
 const PORT = Number.parseInt(process.env.WIDGET_DEMO_PORT ?? "4000", 10);
@@ -31,7 +31,7 @@ const server = createServer(async (request, response) => {
     if (stats.isDirectory()) {
       filePath = join(filePath, "index.html");
     }
-  } catch (error) {
+  } catch (_error) {
     if (normalisedPath.endsWith("/")) {
       filePath = join(ROOT, normalisedPath, "index.html");
     } else {
@@ -47,7 +47,7 @@ const server = createServer(async (request, response) => {
     response.statusCode = 200;
     response.setHeader("Content-Type", contentType);
     response.end(data);
-  } catch (error) {
+  } catch (_error) {
     response.statusCode = 404;
     response.setHeader("Content-Type", "text/plain; charset=utf-8");
     response.end("Not found");

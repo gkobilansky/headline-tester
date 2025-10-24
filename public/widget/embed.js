@@ -372,7 +372,9 @@
       selector: deriveHeadlineSelector(target),
       text: latestHeadlineText,
       originalText:
-        originalHeadlineText !== null ? originalHeadlineText : latestHeadlineText,
+        originalHeadlineText !== null
+          ? originalHeadlineText
+          : latestHeadlineText,
       found: true,
     };
   }
@@ -432,7 +434,9 @@
       selector: deriveHeadlineSelector(target),
       text: latestHeadlineText,
       originalText:
-        originalHeadlineText !== null ? originalHeadlineText : latestHeadlineText,
+        originalHeadlineText !== null
+          ? originalHeadlineText
+          : latestHeadlineText,
       found: true,
     });
   }

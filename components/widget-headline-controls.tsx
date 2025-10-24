@@ -43,17 +43,16 @@ export function WidgetHeadlineControls({
   const isDirty = trimmedDraft !== trimmedCanonical;
   const canApply =
     context.found && isDirty && trimmedDraft.length > 0 && !isPending;
-  const canReset =
-    Boolean(
-      context.originalText &&
-        context.originalText.trim() !== trimmedCanonical &&
-        !isPending
-    );
+  const canReset = Boolean(
+    context.originalText &&
+      context.originalText.trim() !== trimmedCanonical &&
+      !isPending
+  );
 
   const statusIndicator = useMemo(() => {
     if (status === "pending") {
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
           <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
           Updating…
         </span>
@@ -62,7 +61,7 @@ export function WidgetHeadlineControls({
 
     if (status === "success") {
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
+        <span className="inline-flex items-center gap-1 text-emerald-500 text-xs">
           <CheckIcon aria-hidden="true" className="h-3.5 w-3.5" />
           Updated
         </span>
@@ -111,10 +110,10 @@ export function WidgetHeadlineControls({
     <div className="rounded-xl border border-border/60 bg-background/90 p-4 shadow-sm backdrop-blur">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">
+          <p className="font-semibold text-foreground text-sm">
             Demo page headline
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             {context.selector
               ? `Target ${context.selector}`
               : "Waiting for embed context…"}
@@ -133,10 +132,10 @@ export function WidgetHeadlineControls({
             (!context.found || isPending) && "opacity-60"
           )}
           disabled={!context.found || isPending}
+          onChange={(event) => setDraft(event.target.value)}
           placeholder="Headline copy will appear here once detected."
           spellCheck
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
         />
 
         <div className="flex flex-wrap items-center justify-between gap-3">

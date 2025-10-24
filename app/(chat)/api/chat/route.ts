@@ -182,11 +182,7 @@ export async function POST(request: Request) {
           experimental_activeTools:
             selectedChatModel === "chat-model-reasoning"
               ? []
-              : [
-                  "createDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                ],
+              : ["createDocument", "updateDocument", "requestSuggestions"],
           experimental_transform: smoothStream({ chunking: "word" }),
           tools: {
             createDocument: createDocument({ session, dataStream }),

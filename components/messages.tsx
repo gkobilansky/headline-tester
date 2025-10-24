@@ -150,16 +150,10 @@ export const Messages = memo(PureMessages, (prevProps, nextProps) => {
   if (prevProps.isWidget !== nextProps.isWidget) {
     return false;
   }
-  if (
-    !prevProps.widgetHeadlineStarter &&
-    nextProps.widgetHeadlineStarter
-  ) {
+  if (!prevProps.widgetHeadlineStarter && nextProps.widgetHeadlineStarter) {
     return false;
   }
-  if (
-    prevProps.widgetHeadlineStarter &&
-    !nextProps.widgetHeadlineStarter
-  ) {
+  if (prevProps.widgetHeadlineStarter && !nextProps.widgetHeadlineStarter) {
     return false;
   }
   if (
