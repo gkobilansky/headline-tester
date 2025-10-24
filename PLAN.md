@@ -164,7 +164,7 @@ Enable the demo embed to share headline context with the widget and let admins o
 ## Phase 4: Config, Token Flow & Controls
 
 ### Overview
-Stub token validation, pass config into the widget, and wire basic `postMessage` handshake.
+Stub token validation, hydrate the widget with server-provided config (including any active experiment shell), and harden the `postMessage` handshake so loader-driven reveals and future controls stay reliable.
 
 ### Changes Required:
 
@@ -174,15 +174,19 @@ Stub token validation, pass config into the widget, and wire basic `postMessage`
 
 #### 2. Widget Config Injection  
 **File**: `app/(widget)/page.tsx`  
-**Changes**: Resolve token to config, `notFound()` on failure, pass config into `<Chat>` or widget wrapper.
+**Changes**: Resolve token to config, `notFound()` on failure, pass config (token metadata plus latest experiment snapshot placeholder) into `<Chat>` or widget wrapper.
 
 #### 3. PostMessage Skeleton  
 **Files**: `public/widget/embed.js`, `app/(widget)/page.tsx`  
-**Changes**: Parent script listens for `headlineTester:ready`; iframe posts ready event and handles `headlineTester:show`/`hide`, so reveal can be triggered without altering iframe URL. Augment this path as needed to co-exist with the headline controls.
+**Changes**: Parent script listens for `headlineTester:ready`; iframe posts ready event and handles `headlineTester:show`/`hide`, so reveal can be triggered without altering iframe URL. Extend the payload to carry widget mode + experiment readiness flags.
 
 #### 4. Visibility Hook  
 **File**: `components/chat.tsx` or new hook  
 **Changes**: In widget mode, respond to visibility events and control initial hidden state.
+
+#### 5. Loader ↔ Widget Handshake Contract  
+**Files**: `public/widget/embed.js`, `components/widget-root.tsx`  
+**Changes**: Document and enforce the message types the loader can rely on (`ready`, `mode`, `dimensions`, `domContext`), enabling later experiment payloads without breaking compatibility.
 
 ### Success Criteria:
 
@@ -204,25 +208,25 @@ Stub token validation, pass config into the widget, and wire basic `postMessage`
 ## Phase 5: Test Authoring Flow
 
 ### Overview
-Allow admins to create new headline tests from within the widget experience, storing initial variants and linking them to subsequent chat runs.
+Let admins turn the in-widget headline edits into persisted experiments tied to their public token so future visitors can see variants without re-running the chat.
 
 ### Changes Required:
 
-1. **Test Schema & Storage**  
+1. **Experiment Schema & Storage**  
    **File**: `lib/db/schema.ts`, `lib/db/queries.ts`  
-   **Changes**: Introduce a `tests` table with metadata (id, title, createdBy, variants JSON). Add helper to create tests tied to the widget token.
+   **Changes**: Introduce an `experiments` table keyed by widget token + path. Store control copy, latest variant copy, selector, status, author, and timestamps. Add helpers to read/write the active experiment for a token.
 
-2. **API Endpoint**  
-   **File**: `app/api/tests/route.ts` *(new)*  
-   **Changes**: POST handler that validates token auth, accepts test details, and persists via the helper. Return created test payload.
+2. **Widget Experiment API**  
+   **File**: `app/api/widget/experiments/route.ts` *(new)*  
+   **Changes**: POST handler that validates a signed widget control token, accepts the DOM selector/context payload, and upserts the experiment. Return the saved record so the widget can confirm state.
 
-3. **Widget UI Entry Point & Context Sharing**  
-   **Files**: `components/widget-root.tsx`, `components/chat.tsx`, `public/widget/embed.js`  
-   **Changes**: Provide a primary CTA (e.g., 'Create Test') that opens a lightweight form to capture headline variants and description, then calls the API. Reuse the Phase 3 context channel to send structured DOM details (headline, CTA targets, path) into the widget for inclusion in the request.
+3. **Widget UI Hook-Up**  
+   **Files**: `components/widget-root.tsx`, `components/widget-headline-controls.tsx`  
+   **Changes**: When `Apply` succeeds locally, call the new API to persist the variant; propagate success/error back into the chat stream and keep the controls focused on the saved experiment.
 
 4. **Chat Context Integration**  
    **File**: `components/chat.tsx` or new hook  
-   **Changes**: When a test is created, add context to the active chat so subsequent messages reference the new test ID and host DOM snapshot.
+   **Changes**: Attach experiment metadata to the chat so follow-up prompts know an experiment is active, including surfaced selector and control/variant copy.
 
 ### Success Criteria:
 
@@ -241,6 +245,46 @@ Allow admins to create new headline tests from within the widget experience, sto
 
 ---
 
+## Phase 6: Visitor Experiment Rollout & Telemetry
+
+### Overview
+Serve the stored experiment to production visitors, split traffic 50/50, and capture impression/conversion signals so admins can monitor performance.
+
+### Changes Required:
+
+1. **Loader Fetch & Bucket**  
+   **File**: `public/widget/embed.js`  
+   **Changes**: On load, fetch the active experiment via `GET /api/widget/experiments?token=…`, deterministically assign each visitor to control or variant (hash + cookie/localStorage), and apply the variant before revealing admin UI.
+
+2. **Impression Event Pipeline**  
+   **Files**: `public/widget/embed.js`, `app/api/widget/events/route.ts` *(new)*  
+   **Changes**: Emit an impression event when a visitor is served a variant; queue delivery to the API with token, bucket, selector, and timestamp.
+
+3. **Conversion Hook**  
+   **Files**: `public/widget/embed.js`, `docs/widget.md`  
+   **Changes**: Provide a simple `window.HeadlineTesterWidget.trackConversion()` helper that posts conversion events (or allow sites to trigger via DOM annotations).
+
+4. **Admin Safeguards**  
+   **Files**: `components/widget-root.tsx`, `public/widget/embed.js`  
+   **Changes**: Ensure admins visiting with `?hlt=1` always see the launcher (regardless of bucket) and can reset the headline while keeping the stored control intact.
+
+### Success Criteria:
+
+#### Automated Verification
+- [ ] `pnpm lint`
+- [ ] `pnpm test`
+- [ ] `pnpm build`
+
+#### Manual Verification
+- [ ] Demo site shows control and variant on alternating synthetic visitors.
+- [ ] Impression/conversion events arrive in the API with correct bucket metadata.
+- [ ] Admins can reset to control without breaking the visitor variant.
+- [ ] Removing the experiment record returns visitors to the original headline.
+
+**Implementation Note**: Layer in a simple feature flag so the 50/50 rollout can be toggled off during validation.
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -250,12 +294,14 @@ Allow admins to create new headline tests from within the widget experience, sto
 ### Integration Tests
 - Extend route tests to cover `/widget` default hidden state and `/widget?headlinetester=1`.
 - Playwright scenario embedding iframe (if feasible) or at least loading widget route.
+- Add harness that simulates two visitor buckets to confirm variant/control assignment and DOM updates.
 
 ### Manual Testing Steps
 1. Embed script in static HTML; toggle `?headlinetester=1` (host page) or call `HeadlineTesterWidget.show()/hide()` and observe behavior.
 2. Trigger `window.HeadlineTesterWidget.show()/hide()` and verify.
 3. Confirm middleware/path access for loader + iframe.
 4. Test script execution order (async/deferred) to ensure resilience.
+5. Load the demo twice (fresh incognito/localStorage cleared) to validate 50/50 distribution and event recording.
 
 ## Performance Considerations
 - Keep embed script lean (<5 KB), serve with cache headers, and lazy-load heavy assets inside iframe.

@@ -73,11 +73,51 @@ handshake completes, so you do not need to wait on load events manually.
 - Future phases will replace the demo token with domain-scoped validation and
   extend the control channel (e.g. structured configuration, context payloads).
 
-## 5. Start a Headline Test from the Chat
+## 5. Persist a Headline Experiment
 
-Opening the widget now drops visitors into the chat stream first. The headline
-editor panel appears once an admin clicks **I want to start a new headline
-test**, keeping the headline controls colocated with the rest of the
-conversation. The chat automatically reveals the editor after the first
-headline update succeeds or fails, so admins always see status feedback without
-losing their place in the transcript.
+When the editor panel is open, clicking **Apply** updates the host page _and_
+posts the selector/original copy/new copy to `/api/widget/experiments`. The
+backend stores a draft experiment keyed by the widget token so later visits can
+reuse the same control/variant pair. If the call succeeds the chat confirms the
+save; failures surface inline so you can retry.
+
+Resetting the headline through the widget leaves the stored control intact while
+marking the experiment inactive. Removing the experiment record entirely will
+return visitors to the original copy.
+
+## 6. Visitor Rollout & Bucketing
+
+The loader now fetches the active experiment on page load. Each visitor is
+deterministically assigned to `control` or `variant` (hash + localStorage) and,
+if bucketed into the variant, sees the saved headline immediately. Admin-only
+visits (e.g. `?hlt=1`) always reveal the launcher regardless of bucket so you
+can manage the test.
+
+If no active experiment exists the loader is a no-op for regular visitors and
+the widget behaves as before.
+
+## 7. Track Conversions
+
+Two telemetry hooks ship with the rollout:
+
+```js
+// Record a manual conversion (e.g. CTA click).
+window.HeadlineTesterWidget.trackConversion();
+```
+
+Impressions are logged automatically whenever a visitor receives variant copy.
+Conversion helpers buffer in the loader and post to
+`/api/widget/events?type=conversion` alongside the visitor bucket, token, and
+timestamp. Use these events to gauge variant performance before promoting it to
+control.
+
+## 8. Admin Testing Checklist
+
+1. Load the demo page without `?hlt=1` twice in a clean browser — confirm control
+   and variant appear on alternating visits.
+2. Append `?hlt=1` to ensure the launcher shows regardless of bucket and that
+   the chat reflects the active experiment.
+3. Apply a new headline, refresh without the flag, and confirm visitors in the
+   variant bucket see the update immediately.
+4. Call `HeadlineTesterWidget.trackConversion()` in the console and verify the
+   event posts successfully.
