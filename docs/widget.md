@@ -73,51 +73,38 @@ handshake completes, so you do not need to wait on load events manually.
 - Future phases will replace the demo token with domain-scoped validation and
   extend the control channel (e.g. structured configuration, context payloads).
 
-## 5. Persist a Headline Experiment
+## 5. Update the Demo Headline
 
-When the editor panel is open, clicking **Apply** updates the host page _and_
-posts the selector/original copy/new copy to `/api/widget/experiments`. The
-backend stores a draft experiment keyed by the widget token so later visits can
-reuse the same control/variant pair. If the call succeeds the chat confirms the
-save; failures surface inline so you can retry.
+Once the iframe signals readiness the loader shares the page headline with the
+widget. The editor panel above the chat displays the selector and copy so you
+can iterate in place.
 
-Resetting the headline through the widget leaves the stored control intact while
-marking the experiment inactive. Removing the experiment record entirely will
-return visitors to the original copy.
+1. Reveal the widget (append `?hlt=1` or call `show({ open: true })`).
+2. Enter new copy in the **Demo page headline** textarea.
+3. Click **Ask AI to rewrite** to push the current headline into the chat and
+   get fresh suggestions instantly (optional).
+4. Click **Apply** to update the host page. The loader acknowledges success with
+   a `headlineTester:headlineUpdated` message so the widget can reflect the new
+   state and log the change in the transcript.
+5. Use **Reset** to restore the original text captured when the script first
+   loaded.
 
-## 6. Visitor Rollout & Bucketing
+All edits remain local to the browser for now—refreshing the page reverts to the
+original markup until persistence lands in a later phase.
 
-The loader now fetches the active experiment on page load. Each visitor is
-deterministically assigned to `control` or `variant` (hash + localStorage) and,
-if bucketed into the variant, sees the saved headline immediately. Admin-only
-visits (e.g. `?hlt=1`) always reveal the launcher regardless of bucket so you
-can manage the test.
+## 6. Admin Testing Checklist
 
-If no active experiment exists the loader is a no-op for regular visitors and
-the widget behaves as before.
+1. Embed the script on a static page and confirm nothing renders until you use
+   the URL flag or control API.
+2. Visit with `?hlt=1` and verify the launcher appears (the chat should open if
+   `show({ open: true })` is used).
+3. Call `HeadlineTesterWidget.hide()` and `show({ open: true })` from the
+   console to confirm commands queue correctly before the iframe loads.
+4. Ask the assistant for a rewrite, apply a headline edit, and confirm the chat
+   transcript notes the change before using **Reset** to return to the original
+   copy.
 
-## 7. Track Conversions
+## 7. What’s Next
 
-Two telemetry hooks ship with the rollout:
-
-```js
-// Record a manual conversion (e.g. CTA click).
-window.HeadlineTesterWidget.trackConversion();
-```
-
-Impressions are logged automatically whenever a visitor receives variant copy.
-Conversion helpers buffer in the loader and post to
-`/api/widget/events?type=conversion` alongside the visitor bucket, token, and
-timestamp. Use these events to gauge variant performance before promoting it to
-control.
-
-## 8. Admin Testing Checklist
-
-1. Load the demo page without `?hlt=1` twice in a clean browser — confirm control
-   and variant appear on alternating visits.
-2. Append `?hlt=1` to ensure the launcher shows regardless of bucket and that
-   the chat reflects the active experiment.
-3. Apply a new headline, refresh without the flag, and confirm visitors in the
-   variant bucket see the update immediately.
-4. Call `HeadlineTesterWidget.trackConversion()` in the console and verify the
-   event posts successfully.
+Upcoming phases will introduce experiment persistence, visitor bucketing, and
+telemetry so admins can launch and monitor tests without leaving the chat.

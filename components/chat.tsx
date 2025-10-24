@@ -34,6 +34,21 @@ import { getChatHistoryPaginationKey } from "./sidebar-history";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
 
+type WidgetHeadlineEvent =
+  | {
+      id: string;
+      type: "rewrite-request";
+      text: string;
+      selector: string | null;
+    }
+  | {
+      id: string;
+      type: "applied";
+      action: "update" | "reset";
+      text: string | null;
+      selector: string | null;
+    };
+
 export function Chat({
   id,
   initialMessages,
@@ -45,6 +60,8 @@ export function Chat({
   isWidget = false,
   widgetToken,
   widgetHeadlineStarter,
+  widgetHeadlineEvents,
+  onWidgetHeadlineEventsConsumed,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -60,6 +77,8 @@ export function Chat({
     onStart: () => void;
     controls: WidgetHeadlineControlsProps;
   };
+  widgetHeadlineEvents?: WidgetHeadlineEvent[];
+  onWidgetHeadlineEventsConsumed?: (ids: string[]) => void;
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -132,6 +151,65 @@ export function Chat({
       }
     },
   });
+
+  useEffect(() => {
+    if (!isWidget || !widgetHeadlineEvents || widgetHeadlineEvents.length === 0) {
+      return;
+    }
+
+    const processedIds: string[] = [];
+
+    widgetHeadlineEvents.forEach((event) => {
+      if (event.type === "rewrite-request") {
+        const promptParts = [
+          "Rewrite this page headline to improve conversions.",
+        ];
+        promptParts.push(`Current headline:\n"${event.text}"`);
+        sendMessage({
+          role: "user",
+          parts: [
+            {
+              type: "text",
+              text: promptParts.join("\n"),
+            },
+          ],
+        });
+        processedIds.push(event.id);
+        return;
+      }
+
+      if (event.type === "applied") {
+        const selectorLabel = event.selector ?? "headline";
+        const actionLabel =
+          event.action === "reset"
+            ? "Reset headline to original copy"
+            : "Applied new headline copy";
+        const messageText = event.text
+          ? `${actionLabel} (${selectorLabel}):\n${event.text}`
+          : `${actionLabel} (${selectorLabel}).`;
+        setMessages((existing) => [
+          ...existing,
+          {
+            id: generateUUID(),
+            role: "system",
+            parts: [{ type: "text", text: messageText }],
+            metadata: { createdAt: new Date().toISOString() },
+          },
+        ]);
+        processedIds.push(event.id);
+      }
+    });
+
+    if (processedIds.length > 0) {
+      onWidgetHeadlineEventsConsumed?.(processedIds);
+    }
+  }, [
+    isWidget,
+    widgetHeadlineEvents,
+    sendMessage,
+    setMessages,
+    onWidgetHeadlineEventsConsumed,
+  ]);
 
   const searchParams = useSearchParams();
   const query = searchParams.get("query");

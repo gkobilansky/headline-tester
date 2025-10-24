@@ -20,6 +20,7 @@ export type WidgetHeadlineControlsProps = {
   isPending: boolean;
   onApply: (nextHeadline: string) => void;
   onReset: () => void;
+  onRewrite: (currentHeadline: string) => void;
 };
 
 export function WidgetHeadlineControls({
@@ -29,6 +30,7 @@ export function WidgetHeadlineControls({
   isPending,
   onApply,
   onReset,
+  onRewrite,
 }: WidgetHeadlineControlsProps) {
   const canonicalHeadline = context.text ?? context.originalText ?? "";
   const [draft, setDraft] = useState(canonicalHeadline);
@@ -48,6 +50,7 @@ export function WidgetHeadlineControls({
       context.originalText.trim() !== trimmedCanonical &&
       !isPending
   );
+  const canRewrite = trimmedDraft.length > 0 && !isPending;
 
   const statusIndicator = useMemo(() => {
     if (status === "pending") {
@@ -158,6 +161,15 @@ export function WidgetHeadlineControls({
               variant="ghost"
             >
               Reset
+            </Button>
+            <Button
+              disabled={!canRewrite}
+              onClick={() => onRewrite(draft)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Ask AI to rewrite
             </Button>
             <Button
               disabled={!canApply}

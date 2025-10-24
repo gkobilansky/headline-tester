@@ -80,7 +80,7 @@ export default function WidgetLayout({ children }) {
 
 ---
 
-## Phase 2: Loader Snippet & Bootstrapping
+## Phase 2: Loader Snippet & Bootstrapping *(Completed)*
 
 ### Overview
 Ship the single-line loader script that injects the iframe, inspects the host page for the admin reveal signal, and exposes basic controls aligned with the `?hlt=1` reveal flow.
@@ -121,7 +121,7 @@ Ship the single-line loader script that injects the iframe, inspects the host pa
 
 ---
 
-## Phase 3: Demo Headline Controls
+## Phase 3: Demo Headline Controls *(Completed)*
 
 ### Overview
 Enable the demo embed to share headline context with the widget and let admins overwrite it directly, proving the control channel before deeper config work.
@@ -152,10 +152,10 @@ Enable the demo embed to share headline context with the widget and let admins o
 - [ ] `pnpm build`
 
 #### Manual Verification
-- [ ] Demo widget surfaces the current headline context after load.
-- [ ] Applying a new headline updates the demo page immediately without reload.
-- [ ] Refreshing the page restores the original headline copy.
-- [ ] Chat transcript captures the applied update (if assistant integration shipped).
+- [x] Demo widget surfaces the current headline context after load.
+- [x] Applying a new headline updates the demo page immediately without reload.
+- [x] Refreshing the page restores the original headline copy.
+- [x] Chat transcript captures the applied update (if assistant integration shipped).
 
 **Implementation Note**: Validate on both the Next.js dev server and the static `test-sites/widget-demo` page to avoid origin-specific assumptions.
 

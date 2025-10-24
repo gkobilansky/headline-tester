@@ -15,6 +15,21 @@ type WidgetRootProps = {
   widgetToken?: string;
 };
 
+type WidgetHeadlineEvent =
+  | {
+      id: string;
+      type: "rewrite-request";
+      text: string;
+      selector: string | null;
+    }
+  | {
+      id: string;
+      type: "applied";
+      action: "update" | "reset";
+      text: string | null;
+      selector: string | null;
+    };
+
 const READY_EVENT = "headlineTester:ready";
 const SHOW_EVENT = "headlineTester:show";
 const HIDE_EVENT = "headlineTester:hide";
@@ -66,6 +81,9 @@ export function WidgetRoot({
   >("idle");
   const [headlineError, setHeadlineError] = useState<string | null>(null);
   const [showHeadlineControls, setShowHeadlineControls] = useState(false);
+  const [headlineEvents, setHeadlineEvents] = useState<WidgetHeadlineEvent[]>(
+    []
+  );
   const chatIdRef = useRef<string>();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const pendingRequestIdRef = useRef<string | null>(null);
@@ -84,6 +102,19 @@ export function WidgetRoot({
       setChatOpen(true);
     }
   }, [initialReveal]);
+
+  const enqueueHeadlineEvent = useCallback((event: WidgetHeadlineEvent) => {
+    setHeadlineEvents((events) => [...events, event]);
+  }, []);
+
+  const handleHeadlineEventsConsumed = useCallback((ids: string[]) => {
+    if (ids.length === 0) {
+      return;
+    }
+    setHeadlineEvents((events) =>
+      events.filter((event) => !ids.includes(event.id))
+    );
+  }, []);
 
   const postMode = useCallback((mode: "hidden" | "launcher" | "chat") => {
     window.parent?.postMessage({ mode, type: MODE_EVENT }, "*");
@@ -121,6 +152,38 @@ export function WidgetRoot({
   const requestDomContext = useCallback(() => {
     window.parent?.postMessage({ type: REQUEST_DOM_CONTEXT_EVENT }, "*");
   }, []);
+
+  const handleRewritePrompt = useCallback(
+    (requestedHeadline?: string) => {
+      const base =
+        requestedHeadline?.trim() ??
+        (headlineContext.text ?? headlineContext.originalText ?? "").trim();
+
+      if (!base) {
+        setHeadlineStatus("error");
+        setHeadlineError("No headline available to rewrite yet.");
+        return;
+      }
+
+      enqueueHeadlineEvent({
+        id: generateUUID(),
+        type: "rewrite-request",
+        text: base,
+        selector: headlineContext.selector ?? null,
+      });
+      setHeadlineError(null);
+      setHeadlineStatus((current) =>
+        current === "pending" ? current : "idle"
+      );
+      setShowHeadlineControls(true);
+    },
+    [
+      enqueueHeadlineEvent,
+      headlineContext.originalText,
+      headlineContext.selector,
+      headlineContext.text,
+    ]
+  );
 
   const applyHeadlineUpdate = useCallback(
     (nextHeadline: string) => {
@@ -311,6 +374,13 @@ export function WidgetRoot({
               const text =
                 typeof typed.text === "string" ? typed.text : prev.text;
               const original = prev.originalText ?? text ?? null;
+              enqueueHeadlineEvent({
+                id: generateUUID(),
+                type: "applied",
+                action: typed.action === "reset" ? "reset" : "update",
+                text,
+                selector: selector ?? null,
+              });
               return {
                 selector,
                 text,
@@ -355,7 +425,12 @@ export function WidgetRoot({
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [hideWidget, requestDomContext, showLauncher]);
+  }, [
+    enqueueHeadlineEvent,
+    hideWidget,
+    requestDomContext,
+    showLauncher,
+  ]);
 
   const launchButton = launcherVisible && !chatOpen;
 
@@ -398,6 +473,7 @@ export function WidgetRoot({
       isPending: headlineStatus === "pending",
       onApply: applyHeadlineUpdate,
       onReset: resetHeadline,
+      onRewrite: handleRewritePrompt,
     }),
     [
       headlineContext,
@@ -405,6 +481,7 @@ export function WidgetRoot({
       headlineError,
       applyHeadlineUpdate,
       resetHeadline,
+      handleRewritePrompt,
     ]
   );
 
@@ -423,8 +500,19 @@ export function WidgetRoot({
       showControls: showHeadlineControls,
       onStart: handleStartHeadlineTest,
       controls: headlineControls,
+      onRewrite: () => handleRewritePrompt(),
+      canRewrite: Boolean(
+        (headlineContext.text ?? headlineContext.originalText ?? "").trim()
+      ),
     }),
-    [showHeadlineControls, handleStartHeadlineTest, headlineControls]
+    [
+      showHeadlineControls,
+      handleStartHeadlineTest,
+      headlineControls,
+      handleRewritePrompt,
+      headlineContext.text,
+      headlineContext.originalText,
+    ]
   );
 
   return (
@@ -459,7 +547,9 @@ export function WidgetRoot({
                 isReadonly={false}
                 isWidget
                 key={chatId}
+                onWidgetHeadlineEventsConsumed={handleHeadlineEventsConsumed}
                 widgetHeadlineStarter={widgetHeadlineStarter}
+                widgetHeadlineEvents={headlineEvents}
                 widgetToken={widgetToken}
               />
             </div>
