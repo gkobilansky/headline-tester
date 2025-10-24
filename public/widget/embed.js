@@ -8,6 +8,10 @@
   const HIDE_EVENT = "headlineTester:hide";
   const MODE_EVENT = "headlineTester:mode";
   const DIMENSIONS_EVENT = "headlineTester:dimensions";
+  const DOM_CONTEXT_EVENT = "headlineTester:domContext";
+  const UPDATE_HEADLINE_EVENT = "headlineTester:updateHeadline";
+  const HEADLINE_UPDATED_EVENT = "headlineTester:headlineUpdated";
+  const REQUEST_DOM_CONTEXT_EVENT = "headlineTester:requestDomContext";
   const GLOBAL_NAME = "HeadlineTesterWidget";
   const CONTAINER_ID = "headline-tester-widget-container";
   const IFRAME_ID = "headline-tester-widget-iframe";
@@ -62,6 +66,10 @@
   let requestedReveal = false;
   let currentMode = MODE_HIDDEN;
   let measuredDimensions = null;
+  let headlineElement = null;
+  let originalHeadlineText = null;
+  let headlineSelector = null;
+  let latestHeadlineText = null;
 
   function ensureContainer() {
     if (container?.parentNode) {
@@ -266,6 +274,169 @@
     return {};
   }
 
+  const cssEscape =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? (value) => CSS.escape(value)
+      : (value) =>
+          String(value)
+            .split("")
+            .map((char) =>
+              /[a-zA-Z0-9_-]/.test(char)
+                ? char
+                : `\\${char.charCodeAt(0).toString(16)} `
+            )
+            .join("");
+
+  function runWhenDomReady(callback) {
+    if (typeof callback !== "function") {
+      return;
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener(
+        "DOMContentLoaded",
+        () => {
+          callback();
+        },
+        { once: true }
+      );
+    } else {
+      callback();
+    }
+  }
+
+  function deriveHeadlineSelector(target) {
+    if (!target) {
+      return headlineSelector || null;
+    }
+
+    const dataAttr = target.getAttribute("data-headlinetester-target");
+    if (dataAttr) {
+      return `[data-headlinetester-target="${dataAttr}"]`;
+    }
+
+    if (target.id) {
+      return `#${cssEscape(target.id)}`;
+    }
+
+    const tagName = target.tagName ? target.tagName.toLowerCase() : null;
+    if (tagName) {
+      return tagName;
+    }
+
+    return headlineSelector || "h1";
+  }
+
+  function findHeadlineElement() {
+    if (headlineElement && document.contains(headlineElement)) {
+      return headlineElement;
+    }
+
+    headlineElement = document.querySelector(
+      '[data-headlinetester-target="headline"]'
+    );
+
+    if (!headlineElement) {
+      headlineElement = document.querySelector("h1");
+    }
+
+    if (headlineElement) {
+      if (originalHeadlineText === null) {
+        originalHeadlineText = headlineElement.textContent || "";
+      }
+      if (!headlineSelector) {
+        headlineSelector = deriveHeadlineSelector(headlineElement);
+      }
+      latestHeadlineText = headlineElement.textContent || "";
+      return headlineElement;
+    }
+
+    return null;
+  }
+
+  function buildHeadlineContext() {
+    const target = findHeadlineElement();
+    if (!target) {
+      return {
+        type: DOM_CONTEXT_EVENT,
+        selector: headlineSelector,
+        text: null,
+        originalText: originalHeadlineText,
+        found: false,
+      };
+    }
+
+    latestHeadlineText = target.textContent || "";
+    return {
+      type: DOM_CONTEXT_EVENT,
+      selector: deriveHeadlineSelector(target),
+      text: latestHeadlineText,
+      originalText:
+        originalHeadlineText !== null ? originalHeadlineText : latestHeadlineText,
+      found: true,
+    };
+  }
+
+  function sendHeadlineContext() {
+    const context = buildHeadlineContext();
+    enqueue(context);
+  }
+
+  function handleUpdateHeadlineMessage(data) {
+    const requestId =
+      data && typeof data.requestId === "string" ? data.requestId : undefined;
+
+    const target = findHeadlineElement();
+    if (!target) {
+      postMessage({
+        type: HEADLINE_UPDATED_EVENT,
+        status: "error",
+        reason: "not-found",
+        requestId,
+      });
+      return;
+    }
+
+    const wantsReset = data && data.reset === true;
+    const nextText =
+      wantsReset && originalHeadlineText !== null
+        ? originalHeadlineText
+        : typeof data?.text === "string"
+          ? data.text
+          : undefined;
+
+    if (nextText === undefined) {
+      postMessage({
+        type: HEADLINE_UPDATED_EVENT,
+        status: "error",
+        reason: "invalid-payload",
+        requestId,
+      });
+      return;
+    }
+
+    target.textContent = nextText;
+    latestHeadlineText = target.textContent || "";
+
+    postMessage({
+      type: HEADLINE_UPDATED_EVENT,
+      status: "success",
+      selector: deriveHeadlineSelector(target),
+      text: latestHeadlineText,
+      requestId,
+      action: wantsReset ? "reset" : "update",
+    });
+
+    enqueue({
+      type: DOM_CONTEXT_EVENT,
+      selector: deriveHeadlineSelector(target),
+      text: latestHeadlineText,
+      originalText:
+        originalHeadlineText !== null ? originalHeadlineText : latestHeadlineText,
+      found: true,
+    });
+  }
+
   function autoRevealIfNeeded() {
     if (requestedReveal) {
       return;
@@ -295,6 +466,9 @@
       updateContainerSize();
       flushQueue();
       autoRevealIfNeeded();
+      runWhenDomReady(() => {
+        sendHeadlineContext();
+      });
       return;
     }
 
@@ -313,6 +487,19 @@
     if (data.type === DIMENSIONS_EVENT) {
       handleDimensionsMessage(data);
       return;
+    }
+
+    if (data.type === UPDATE_HEADLINE_EVENT) {
+      runWhenDomReady(() => {
+        handleUpdateHeadlineMessage(data);
+      });
+      return;
+    }
+
+    if (data.type === REQUEST_DOM_CONTEXT_EVENT) {
+      runWhenDomReady(() => {
+        sendHeadlineContext();
+      });
     }
   }
 

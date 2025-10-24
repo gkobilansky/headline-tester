@@ -3,6 +3,10 @@
 import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chat } from "@/components/chat";
+import {
+  WidgetHeadlineControls,
+  type WidgetHeadlineContext,
+} from "@/components/widget-headline-controls";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { cn, generateUUID } from "@/lib/utils";
 
@@ -16,6 +20,10 @@ const SHOW_EVENT = "headlineTester:show";
 const HIDE_EVENT = "headlineTester:hide";
 const MODE_EVENT = "headlineTester:mode";
 const DIMENSIONS_EVENT = "headlineTester:dimensions";
+const DOM_CONTEXT_EVENT = "headlineTester:domContext";
+const UPDATE_HEADLINE_EVENT = "headlineTester:updateHeadline";
+const HEADLINE_UPDATED_EVENT = "headlineTester:headlineUpdated";
+const REQUEST_DOM_CONTEXT_EVENT = "headlineTester:requestDomContext";
 
 type WidgetMessage =
   | string
@@ -45,8 +53,22 @@ export function WidgetRoot({
 }: WidgetRootProps) {
   const [launcherVisible, setLauncherVisible] = useState(initialReveal);
   const [chatOpen, setChatOpen] = useState(initialReveal);
+  const [headlineContext, setHeadlineContext] = useState<WidgetHeadlineContext>({
+    selector: null,
+    text: null,
+    originalText: null,
+    found: false,
+  });
+  const [headlineStatus, setHeadlineStatus] = useState<
+    "idle" | "pending" | "success" | "error"
+  >("idle");
+  const [headlineError, setHeadlineError] = useState<string | null>(null);
   const chatIdRef = useRef<string>();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const pendingRequestIdRef = useRef<string | null>(null);
+  const statusResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const collapsed = launcherVisible && !chatOpen;
 
   if (!chatIdRef.current) {
@@ -93,10 +115,95 @@ export function WidgetRoot({
     setChatOpen(false);
   }, [postMode]);
 
+  const requestDomContext = useCallback(() => {
+    window.parent?.postMessage({ type: REQUEST_DOM_CONTEXT_EVENT }, "*");
+  }, []);
+
+  const applyHeadlineUpdate = useCallback(
+    (nextHeadline: string) => {
+      if (pendingRequestIdRef.current) {
+        return;
+      }
+
+      const trimmed = nextHeadline.trim();
+      if (!trimmed) {
+        setHeadlineStatus("error");
+        setHeadlineError("Headline cannot be empty.");
+        return;
+      }
+
+      if ((headlineContext.text ?? "").trim() === trimmed) {
+        setHeadlineStatus("idle");
+        setHeadlineError(null);
+        return;
+      }
+
+      const requestId = generateUUID();
+      pendingRequestIdRef.current = requestId;
+      setHeadlineStatus("pending");
+      setHeadlineError(null);
+      window.parent?.postMessage(
+        {
+          type: UPDATE_HEADLINE_EVENT,
+          text: trimmed,
+          requestId,
+        },
+        "*"
+      );
+    },
+    [headlineContext.text]
+  );
+
+  const resetHeadline = useCallback(() => {
+    if (pendingRequestIdRef.current) {
+      return;
+    }
+
+    if (!headlineContext.originalText) {
+      setHeadlineStatus("error");
+      setHeadlineError("No saved headline to restore.");
+      return;
+    }
+
+    const requestId = generateUUID();
+    pendingRequestIdRef.current = requestId;
+    setHeadlineStatus("pending");
+    setHeadlineError(null);
+    window.parent?.postMessage(
+      {
+        type: UPDATE_HEADLINE_EVENT,
+        reset: true,
+        requestId,
+      },
+      "*"
+    );
+  }, [headlineContext.originalText]);
+
   useEffect(() => {
     const mode = chatOpen ? "chat" : launcherVisible ? "launcher" : "hidden";
     postMode(mode);
   }, [chatOpen, launcherVisible, postMode]);
+
+  useEffect(() => {
+    if (statusResetTimeoutRef.current) {
+      clearTimeout(statusResetTimeoutRef.current);
+      statusResetTimeoutRef.current = null;
+    }
+
+    if (headlineStatus === "success") {
+      statusResetTimeoutRef.current = setTimeout(() => {
+        setHeadlineStatus("idle");
+        statusResetTimeoutRef.current = null;
+      }, 1800);
+    }
+
+    return () => {
+      if (statusResetTimeoutRef.current) {
+        clearTimeout(statusResetTimeoutRef.current);
+        statusResetTimeoutRef.current = null;
+      }
+    };
+  }, [headlineStatus]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -126,8 +233,104 @@ export function WidgetRoot({
   }, []);
 
   useEffect(() => {
-    const handleMessage = (event: MessageEvent<WidgetMessage>) => {
-      const message = normaliseMessage(event.data);
+    const handleMessage = (event: MessageEvent<unknown>) => {
+      const data = event.data as Record<string, unknown> | WidgetMessage | null;
+
+      if (data && typeof data === "object" && "type" in data) {
+        const typed = data as Record<string, unknown> & { type: string };
+
+        if (typed.type === DOM_CONTEXT_EVENT) {
+          setHeadlineContext((prev) => {
+            const selector =
+              typeof typed.selector === "string" ? typed.selector : prev.selector;
+            const text =
+              typeof typed.text === "string" ? typed.text : prev.text;
+            const original =
+              typeof typed.originalText === "string"
+                ? typed.originalText
+                : prev.originalText ?? text ?? null;
+            const found =
+              typed.found === false ? false : Boolean(text ?? original);
+
+            return {
+              selector,
+              text,
+              originalText: original,
+              found,
+            };
+          });
+
+          if (typed.found === false) {
+            setHeadlineStatus((current) =>
+              current === "pending" ? current : "error"
+            );
+            setHeadlineError("Headline element not found on this page.");
+          } else {
+            setHeadlineStatus((current) => {
+              if (current === "pending") {
+                return current;
+              }
+              if (current === "error") {
+                return "idle";
+              }
+              return current;
+            });
+            setHeadlineError(null);
+          }
+
+          return;
+        }
+
+        if (typed.type === HEADLINE_UPDATED_EVENT) {
+          const requestId =
+            typeof typed.requestId === "string" ? typed.requestId : null;
+
+          if (
+            pendingRequestIdRef.current &&
+            requestId &&
+            pendingRequestIdRef.current !== requestId
+          ) {
+            return;
+          }
+
+          pendingRequestIdRef.current = null;
+
+          if (typed.status === "success") {
+            setHeadlineStatus("success");
+            setHeadlineError(null);
+            setHeadlineContext((prev) => {
+              const selector =
+                typeof typed.selector === "string"
+                  ? typed.selector
+                  : prev.selector;
+              const text =
+                typeof typed.text === "string" ? typed.text : prev.text;
+              const original = prev.originalText ?? text ?? null;
+              return {
+                selector,
+                text,
+                originalText: original,
+                found: true,
+              };
+            });
+
+            if (typeof typed.text !== "string") {
+              requestDomContext();
+            }
+          } else if (typed.status === "error") {
+            const reason =
+              typeof typed.reason === "string"
+                ? typed.reason
+                : "Unable to update the headline.";
+            setHeadlineStatus("error");
+            setHeadlineError(reason);
+          }
+
+          return;
+        }
+      }
+
+      const message = normaliseMessage(data as WidgetMessage);
       if (!message.type) {
         return;
       }
@@ -142,11 +345,12 @@ export function WidgetRoot({
 
     window.addEventListener("message", handleMessage);
     window.parent?.postMessage({ type: READY_EVENT }, "*");
+    requestDomContext();
 
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [hideWidget, showLauncher]);
+  }, [hideWidget, requestDomContext, showLauncher]);
 
   const launchButton = launcherVisible && !chatOpen;
 
@@ -181,6 +385,8 @@ export function WidgetRoot({
     );
   }, [collapsed]);
 
+  const isHeadlinePending = headlineStatus === "pending";
+
   return (
     <div
       aria-hidden={!launcherVisible && !chatOpen}
@@ -203,17 +409,29 @@ export function WidgetRoot({
             <XIcon aria-hidden="true" className="size-4" />
           </button>
           <div className="flex h-full flex-col pt-12">
-            <Chat
-              autoResume={false}
-              id={chatId}
-              initialChatModel={DEFAULT_CHAT_MODEL}
-              initialMessages={[]}
-              initialVisibilityType="private"
-              isReadonly={false}
-              isWidget
-              key={chatId}
-              widgetToken={widgetToken}
-            />
+            <div className="px-4 pb-3">
+              <WidgetHeadlineControls
+                context={headlineContext}
+                error={headlineError}
+                isPending={isHeadlinePending}
+                onApply={applyHeadlineUpdate}
+                onReset={resetHeadline}
+                status={headlineStatus}
+              />
+            </div>
+            <div className="flex-1 min-h-0">
+              <Chat
+                autoResume={false}
+                id={chatId}
+                initialChatModel={DEFAULT_CHAT_MODEL}
+                initialMessages={[]}
+                initialVisibilityType="private"
+                isReadonly={false}
+                isWidget
+                key={chatId}
+                widgetToken={widgetToken}
+              />
+            </div>
           </div>
         </div>
 

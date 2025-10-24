@@ -24,7 +24,7 @@ Reuse the existing chat experience as the iframe widget surface and deliver a si
 - Refactoring the chat experience beyond widget-specific tweaks.
 
 ## Implementation Approach
-Introduce a new App Router group for the widget, ensure middleware allowlists it, and deliver a static/dynamic embed script. Reuse the chat component in “widget mode,” defer deep token management, and add a `postMessage` hook for future phases.
+Introduce a new App Router group for the widget, ensure middleware allowlists it, and deliver a static/dynamic embed script. Reuse the chat component in “widget mode,” prove the parent<->iframe control channel by syncing headline state on the demo page, then defer deep token management and test authoring until after the DOM editing flow is solid.
 
 ## Phase 1: Widget Shell & Routing *(Completed)*
 
@@ -108,41 +108,41 @@ Ship the single-line loader script that injects the iframe, inspects the host pa
 ### Success Criteria:
 
 #### Automated Verification
-- [ ] `pnpm lint`
+- [x] `pnpm lint`
 - [ ] `pnpm test`
-- [ ] `pnpm build`
+- [x] `pnpm build`
 
 #### Manual Verification
-- [ ] Embedding `<script src=".../widget/embed.js" data-token="demo"></script>` shows the widget when the host URL includes `?hlt=1` (host page) or after calling `HeadlineTesterWidget.show()`.
-- [ ] Script handles missing token gracefully.
-- [ ] Multiple inclusions remain idempotent.
+- [x] Embedding `<script src=".../widget/embed.js" data-token="demo"></script>` shows the widget when the host URL includes `?hlt=1` (host page) or after calling `HeadlineTesterWidget.show()`.
+- [x] Script handles missing token gracefully.
+- [x] Multiple inclusions remain idempotent.
 
 **Implementation Note**: Pause after validation for review before Phase 3.
 
 ---
 
-## Phase 4: Test Authoring Flow
+## Phase 3: Demo Headline Controls
 
 ### Overview
-Allow admins to create new headline tests from within the widget experience, storing initial variants and linking them to subsequent chat runs.
+Enable the demo embed to share headline context with the widget and let admins overwrite it directly, proving the control channel before deeper config work.
 
 ### Changes Required:
 
-1. **Test Schema & Storage**  
-   **File**: `lib/db/schema.ts`, `lib/db/queries.ts`  
-   **Changes**: Introduce a `tests` table with metadata (id, title, createdBy, variants JSON). Add helper to create tests tied to the widget token.
+1. **Host DOM Context Handshake**  
+   **Files**: `public/widget/embed.js`, `test-sites/widget-demo/index.html`  
+   **Changes**: Once the iframe posts `headlineTester:ready`, locate the headline node (prefer `[data-headlinetester-target="headline"]`, fall back to the first `<h1>`), capture its text/selector, and send a `headlineTester:domContext` payload to the widget. Persist the original copy so we can reset on reload.
 
-2. **API Endpoint**  
-   **File**: `app/api/tests/route.ts` *(new)*  
-   **Changes**: POST handler that validates token auth, accepts test details, and persists via the helper. Return created test payload.
+2. **Widget Headline Controls**  
+   **Files**: `components/widget-root.tsx`, `components/chat.tsx`, `components/widget-headline-controls.tsx` *(new)*  
+   **Changes**: Store incoming headline context, render a compact editor above the chat that shows the current copy, and allow admins to input a replacement. When the user applies changes, post `headlineTester:updateHeadline` with the new text and disable the form while awaiting a response.
 
-3. **Widget UI Entry Point & Embed Context**  
-   **File**: `components/widget-root.tsx` / `components/chat.tsx` / `public/widget/embed.js`  
-   **Changes**: Provide a primary CTA (e.g., “Create Test”) that opens a lightweight form to capture headline variants and description, then calls the API. Extend the embed snippet to collect host DOM context (current headline, CTA targets, path) and post it to the iframe after the ready event; plumb that payload into chat requests so the assistant can reference real page data.
+3. **DOM Update & Acknowledgement**  
+   **Files**: `public/widget/embed.js`  
+   **Changes**: Listen for `headlineTester:updateHeadline`, patch the host headline's `textContent`, guard against missing targets, and emit a `headlineTester:headlineUpdated` message indicating success or error so the widget can reflect status.
 
-4. **Chat Context Integration**  
-   **File**: `components/chat.tsx` or new hook  
-   **Changes**: When a test is created, add context to the active chat so subsequent messages reference the new test ID. Include host DOM context from the embed snippet with each message so the assistant can summarize the current headline before suggesting variants.
+4. **Assistant Integration** *(optional but recommended)*  
+   **Files**: `components/multimodal-input.tsx`, `components/chat.tsx`  
+   **Changes**: Add a quick action to push the current headline into the conversation for rewriting and append a system message when an update lands so the transcript documents the change.
 
 ### Success Criteria:
 
@@ -152,16 +152,16 @@ Allow admins to create new headline tests from within the widget experience, sto
 - [ ] `pnpm build`
 
 #### Manual Verification
-- [ ] Admins can submit a test from the widget demo and see confirmation.
-- [ ] API rejects requests without a valid widget token.
-- [ ] Created tests are visible via a temporary inspection route or DB query.
-- [ ] Chat responses include the associated test metadata.
+- [ ] Demo widget surfaces the current headline context after load.
+- [ ] Applying a new headline updates the demo page immediately without reload.
+- [ ] Refreshing the page restores the original headline copy.
+- [ ] Chat transcript captures the applied update (if assistant integration shipped).
 
-**Implementation Note**: Evaluate telemetry needs and add analytics hooks if time permits.
+**Implementation Note**: Validate on both the Next.js dev server and the static `test-sites/widget-demo` page to avoid origin-specific assumptions.
 
 ---
 
-## Phase 3: Config, Token Flow & Controls
+## Phase 4: Config, Token Flow & Controls
 
 ### Overview
 Stub token validation, pass config into the widget, and wire basic `postMessage` handshake.
@@ -178,7 +178,7 @@ Stub token validation, pass config into the widget, and wire basic `postMessage`
 
 #### 3. PostMessage Skeleton  
 **Files**: `public/widget/embed.js`, `app/(widget)/page.tsx`  
-**Changes**: Parent script listens for `headlineTester:ready`; iframe posts ready event and handles `headlineTester:show`/`hide`, so reveal can be triggered without altering iframe URL.
+**Changes**: Parent script listens for `headlineTester:ready`; iframe posts ready event and handles `headlineTester:show`/`hide`, so reveal can be triggered without altering iframe URL. Augment this path as needed to co-exist with the headline controls.
 
 #### 4. Visibility Hook  
 **File**: `components/chat.tsx` or new hook  
@@ -197,7 +197,47 @@ Stub token validation, pass config into the widget, and wire basic `postMessage`
 - [ ] `postMessage` handshake logs/messages appear as expected.
 - [ ] Widget remains hidden until query flag or show message triggers.
 
-**Implementation Note**: Pause for confirmation before extending beyond Phase 3.
+**Implementation Note**: Pause for confirmation before extending beyond Phase 4.
+
+---
+
+## Phase 5: Test Authoring Flow
+
+### Overview
+Allow admins to create new headline tests from within the widget experience, storing initial variants and linking them to subsequent chat runs.
+
+### Changes Required:
+
+1. **Test Schema & Storage**  
+   **File**: `lib/db/schema.ts`, `lib/db/queries.ts`  
+   **Changes**: Introduce a `tests` table with metadata (id, title, createdBy, variants JSON). Add helper to create tests tied to the widget token.
+
+2. **API Endpoint**  
+   **File**: `app/api/tests/route.ts` *(new)*  
+   **Changes**: POST handler that validates token auth, accepts test details, and persists via the helper. Return created test payload.
+
+3. **Widget UI Entry Point & Context Sharing**  
+   **Files**: `components/widget-root.tsx`, `components/chat.tsx`, `public/widget/embed.js`  
+   **Changes**: Provide a primary CTA (e.g., 'Create Test') that opens a lightweight form to capture headline variants and description, then calls the API. Reuse the Phase 3 context channel to send structured DOM details (headline, CTA targets, path) into the widget for inclusion in the request.
+
+4. **Chat Context Integration**  
+   **File**: `components/chat.tsx` or new hook  
+   **Changes**: When a test is created, add context to the active chat so subsequent messages reference the new test ID and host DOM snapshot.
+
+### Success Criteria:
+
+#### Automated Verification
+- [ ] `pnpm lint`
+- [ ] `pnpm test`
+- [ ] `pnpm build`
+
+#### Manual Verification
+- [ ] Admins can submit a test from the widget demo and see confirmation.
+- [ ] API rejects requests without a valid widget token.
+- [ ] Created tests are visible via a temporary inspection route or DB query.
+- [ ] Chat responses include the associated test metadata.
+
+**Implementation Note**: Evaluate telemetry needs and add analytics hooks if time permits.
 
 ---
 
