@@ -8,6 +8,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -171,3 +172,32 @@ export const stream = pgTable(
 );
 
 export type Stream = InferSelectModel<typeof stream>;
+
+export const widgetExperiment = pgTable(
+  "WidgetExperiment",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    token: varchar("token", { length: 128 }).notNull(),
+    path: text("path").notNull(),
+    selector: text("selector"),
+    controlHeadline: text("controlHeadline"),
+    variantHeadline: text("variantHeadline"),
+    status: varchar("status", { enum: ["draft", "active", "paused"] })
+      .notNull()
+      .default("draft"),
+    authorId: uuid("authorId").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    authorLabel: text("authorLabel"),
+    createdAt: timestamp("createdAt").notNull(),
+    updatedAt: timestamp("updatedAt").notNull(),
+  },
+  (table) => ({
+    tokenPathIdx: uniqueIndex("WidgetExperiment_token_path_idx").on(
+      table.token,
+      table.path
+    ),
+  })
+);
+
+export type WidgetExperiment = InferSelectModel<typeof widgetExperiment>;

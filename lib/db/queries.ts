@@ -19,6 +19,8 @@ import type { VisibilityType } from "@/components/visibility-selector";
 import { ChatSDKError } from "../errors";
 import type { AppUsage } from "../usage";
 import { generateUUID } from "../utils";
+import type { WidgetConfig, WidgetExperimentSnapshot } from "../widget-config";
+import { demoWidgetConfig } from "../widget-config";
 import {
   type Chat,
   chat,
@@ -31,6 +33,8 @@ import {
   type User,
   user,
   vote,
+  type WidgetExperiment,
+  widgetExperiment,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -590,4 +594,158 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
       "Failed to get stream ids by chat id"
     );
   }
+}
+
+function toWidgetExperimentSnapshot(
+  experiment: WidgetExperiment
+): WidgetExperimentSnapshot {
+  const updatedAt =
+    experiment.updatedAt instanceof Date
+      ? experiment.updatedAt.toISOString()
+      : new Date(experiment.updatedAt).toISOString();
+
+  return {
+    id: experiment.id,
+    path: experiment.path,
+    status: experiment.status as WidgetExperimentSnapshot["status"],
+    selector: experiment.selector ?? null,
+    controlHeadline: experiment.controlHeadline ?? null,
+    variantHeadline: experiment.variantHeadline ?? null,
+    authorLabel: experiment.authorLabel ?? null,
+    updatedAt,
+  };
+}
+
+export async function getWidgetExperiment({
+  token,
+  path,
+}: {
+  token: string;
+  path: string;
+}): Promise<WidgetExperimentSnapshot | null> {
+  try {
+    const [record] = await db
+      .select()
+      .from(widgetExperiment)
+      .where(
+        and(eq(widgetExperiment.token, token), eq(widgetExperiment.path, path))
+      )
+      .orderBy(desc(widgetExperiment.updatedAt))
+      .limit(1);
+
+    if (!record) {
+      return null;
+    }
+
+    return toWidgetExperimentSnapshot(record);
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to fetch widget experiment"
+    );
+  }
+}
+
+type UpsertWidgetExperimentInput = {
+  token: string;
+  path: string;
+  selector: string | null;
+  controlHeadline: string | null;
+  variantHeadline: string | null;
+  status: WidgetExperimentSnapshot["status"];
+  authorId?: string | null;
+  authorLabel?: string | null;
+};
+
+export async function upsertWidgetExperiment({
+  token,
+  path,
+  selector,
+  controlHeadline,
+  variantHeadline,
+  status,
+  authorId,
+  authorLabel,
+}: UpsertWidgetExperimentInput): Promise<WidgetExperimentSnapshot> {
+  const now = new Date();
+
+  const insertValues = {
+    token,
+    path,
+    selector,
+    controlHeadline,
+    variantHeadline,
+    status,
+    authorId: authorId ?? null,
+    authorLabel: authorLabel ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const updateValues: Partial<typeof insertValues> = {
+    selector,
+    controlHeadline,
+    variantHeadline,
+    status,
+    updatedAt: now,
+  };
+
+  if (typeof authorId !== "undefined") {
+    updateValues.authorId = authorId;
+  }
+
+  if (typeof authorLabel !== "undefined") {
+    updateValues.authorLabel = authorLabel;
+  }
+
+  try {
+    const [record] = await db
+      .insert(widgetExperiment)
+      .values(insertValues)
+      .onConflictDoUpdate({
+        target: [widgetExperiment.token, widgetExperiment.path],
+        set: updateValues,
+      })
+      .returning();
+
+    return toWidgetExperimentSnapshot(record);
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to save widget experiment"
+    );
+  }
+}
+
+const widgetConfigs: Record<string, WidgetConfig> = {
+  [demoWidgetConfig.token]: demoWidgetConfig,
+};
+
+export async function getWidgetConfig(
+  token?: string | null,
+  path?: string | null
+): Promise<WidgetConfig | null> {
+  if (typeof token !== "string") {
+    return null;
+  }
+
+  const normalized = token.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const config = widgetConfigs[normalized];
+  if (!config) {
+    return null;
+  }
+
+  const experiment =
+    typeof path === "string" && path.trim().length > 0
+      ? await getWidgetExperiment({ token: normalized, path: path.trim() })
+      : null;
+
+  return {
+    ...config,
+    experiment,
+  };
 }
