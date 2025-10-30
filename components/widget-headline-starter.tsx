@@ -56,7 +56,7 @@ export function WidgetHeadlineStarter({
           </Button>
           {onRewrite ? (
             <Button
-              className="inline-flex w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border/50 bg-background/40 px-4 py-3 text-left font-medium text-foreground text-sm shadow-sm transition hover:bg-accent"
+              className="inline-flex w-full items-center justify-between gap-3 rounded-lg border border-border/50 border-dashed bg-background/40 px-4 py-3 text-left font-medium text-foreground text-sm shadow-sm transition hover:bg-accent"
               disabled={!canRewrite}
               onClick={onRewrite}
               type="button"

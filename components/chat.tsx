@@ -26,6 +26,7 @@ import { ChatSDKError } from "@/lib/errors";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import type { AppUsage } from "@/lib/usage";
 import { cn, fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import type { WidgetConfig } from "@/lib/widget-config";
 import { Artifact } from "./artifact";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
@@ -47,6 +48,20 @@ type WidgetHeadlineEvent =
       action: "update" | "reset";
       text: string | null;
       selector: string | null;
+    }
+  | {
+      id: string;
+      type: "experiment-saved";
+      selector: string | null;
+      path: string | null;
+      controlHeadline: string | null;
+      variantHeadline: string | null;
+      status: "draft" | "active" | "paused";
+    }
+  | {
+      id: string;
+      type: "experiment-error";
+      message: string;
     };
 
 export function Chat({
@@ -59,6 +74,7 @@ export function Chat({
   initialLastContext,
   isWidget = false,
   widgetToken,
+  widgetConfig,
   widgetHeadlineStarter,
   widgetHeadlineEvents,
   onWidgetHeadlineEventsConsumed,
@@ -72,6 +88,7 @@ export function Chat({
   initialLastContext?: AppUsage;
   isWidget?: boolean;
   widgetToken?: string;
+  widgetConfig?: WidgetConfig;
   widgetHeadlineStarter?: {
     showControls: boolean;
     onStart: () => void;
@@ -153,13 +170,17 @@ export function Chat({
   });
 
   useEffect(() => {
-    if (!isWidget || !widgetHeadlineEvents || widgetHeadlineEvents.length === 0) {
+    if (
+      !isWidget ||
+      !widgetHeadlineEvents ||
+      widgetHeadlineEvents.length === 0
+    ) {
       return;
     }
 
     const processedIds: string[] = [];
 
-    widgetHeadlineEvents.forEach((event) => {
+    for (const event of widgetHeadlineEvents) {
       if (event.type === "rewrite-request") {
         const promptParts = [
           "Rewrite this page headline to improve conversions.",
@@ -197,8 +218,58 @@ export function Chat({
           },
         ]);
         processedIds.push(event.id);
+        continue;
       }
-    });
+
+      if (event.type === "experiment-saved") {
+        const pathLabel = event.path ? `for ${event.path}` : "for this page";
+        const statusLabel =
+          event.status === "active"
+            ? "Active"
+            : event.status === "paused"
+              ? "Paused"
+              : "Draft";
+        const lines: string[] = [
+          `${statusLabel} headline test saved ${pathLabel}.`,
+        ];
+        if (event.variantHeadline) {
+          lines.push(`Variant: "${event.variantHeadline}".`);
+        } else {
+          lines.push("Variant cleared; using control copy.");
+        }
+        if (event.controlHeadline && event.variantHeadline) {
+          lines.push(`Control: "${event.controlHeadline}".`);
+        }
+        if (event.selector) {
+          lines.push(`Selector: ${event.selector}.`);
+        }
+        setMessages((existing) => [
+          ...existing,
+          {
+            id: generateUUID(),
+            role: "system",
+            parts: [{ type: "text", text: lines.join("\n") }],
+            metadata: { createdAt: new Date().toISOString() },
+          },
+        ]);
+        processedIds.push(event.id);
+        continue;
+      }
+
+      if (event.type === "experiment-error") {
+        const messageText = `Failed to save headline test: ${event.message}`;
+        setMessages((existing) => [
+          ...existing,
+          {
+            id: generateUUID(),
+            role: "system",
+            parts: [{ type: "text", text: messageText }],
+            metadata: { createdAt: new Date().toISOString() },
+          },
+        ]);
+        processedIds.push(event.id);
+      }
+    }
 
     if (processedIds.length > 0) {
       onWidgetHeadlineEventsConsumed?.(processedIds);
@@ -260,6 +331,12 @@ export function Chat({
       <div
         className={containerClassName}
         data-widget={isWidget ? "true" : undefined}
+        data-widget-site={
+          isWidget && widgetConfig?.siteName ? widgetConfig.siteName : undefined
+        }
+        data-widget-status={
+          isWidget && widgetConfig?.status ? widgetConfig.status : undefined
+        }
         data-widget-token={isWidget ? (widgetToken ?? "") : undefined}
       >
         {!isWidget && (

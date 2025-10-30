@@ -1,3 +1,5 @@
+const SAFE_SELECTOR_CHAR = /[a-zA-Z0-9_-]/;
+
 (() => {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return;
@@ -31,6 +33,14 @@
   const MODE_CHAT = "chat";
   const CHAT_BOX_SHADOW = "0 24px 70px rgba(15,23,42,0.35)";
   const LAUNCHER_BOX_SHADOW = "0 18px 45px rgba(37,99,235,0.35)";
+  /*
+   * Loader <-> iframe postMessage contract:
+   * - READY_EVENT: iframe boot complete; includes { token, siteName, mode, experimentReady }.
+   * - MODE_EVENT: iframe visibility changed; carries { mode, experimentReady }.
+   * - DIMENSIONS_EVENT: iframe surface resized; provides { width, height }.
+   * - DOM_CONTEXT_EVENT: loader sends current headline selection + copy to the iframe.
+   * - UPDATE_HEADLINE_EVENT: iframe requests headline mutation on the host page.
+   */
 
   if (window[LOADER_FLAG]) {
     return;
@@ -44,8 +54,43 @@
       return scripts.at(-1) || null;
     })();
 
+  const scriptDebugAttr = currentScript?.getAttribute("data-debug");
+  const scriptDebugEnabled =
+    typeof scriptDebugAttr === "string"
+      ? scriptDebugAttr === "" || scriptDebugAttr.toLowerCase() === "true"
+      : false;
+  let searchDebugEnabled = false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    searchDebugEnabled = params.get("hltDebug") === "1";
+  } catch (_error) {
+    searchDebugEnabled = false;
+  }
+
+  function isDebugEnabled() {
+    if (scriptDebugEnabled || searchDebugEnabled) {
+      return true;
+    }
+    return window.HeadlineTesterWidgetDebug === true;
+  }
+
+  function debugLog(label, detail) {
+    if (!isDebugEnabled() || typeof console === "undefined") {
+      return;
+    }
+    if (typeof detail === "undefined") {
+      console.info(`[HeadlineTester][loader] ${label}`);
+    } else {
+      console.info(`[HeadlineTester][loader] ${label}`, detail);
+    }
+  }
+
   let token = currentScript?.getAttribute("data-token") || "";
   token = token?.trim() ? token.trim() : DEFAULT_TOKEN;
+  debugLog("loader.init", {
+    token,
+    scriptSrc: currentScript?.src ?? null,
+  });
 
   const scriptUrl =
     (currentScript?.src && new URL(currentScript.src, window.location.href)) ||
@@ -54,9 +99,22 @@
     "/widget",
     scriptUrl ? scriptUrl.origin : window.location.origin
   );
+  const hostPath =
+    typeof window.location.pathname === "string" &&
+    window.location.pathname.length > 0
+      ? window.location.pathname
+      : "/";
+  const hostUrl =
+    typeof window.location.href === "string" && window.location.href.length > 0
+      ? window.location.href
+      : null;
   if (token) {
     widgetUrl.searchParams.set("token", token);
   }
+  if (hostPath) {
+    widgetUrl.searchParams.set("path", hostPath);
+  }
+  debugLog("loader.widgetUrl", { url: widgetUrl.toString() });
 
   let container = null;
   let frame = null;
@@ -70,6 +128,9 @@
   let originalHeadlineText = null;
   let headlineSelector = null;
   let latestHeadlineText = null;
+  let experimentReady = false;
+  let iframeToken = null;
+  let iframeSiteName = null;
 
   function ensureContainer() {
     if (container?.parentNode) {
@@ -126,6 +187,7 @@
 
     if (!frame.src) {
       frame.src = widgetUrl.toString();
+      debugLog("loader.frame.mount", { src: frame.src });
     }
 
     return frame;
@@ -136,6 +198,7 @@
       return;
     }
     frame.contentWindow.postMessage(payload, targetOrigin);
+    debugLog("loader.postMessage", payload);
   }
 
   function enqueue(payload) {
@@ -195,6 +258,11 @@
     root.style.height = `${height}px`;
     root.style.maxWidth = "calc(100vw - 48px)";
     root.style.maxHeight = "calc(100vh - 48px)";
+    debugLog("loader.container.resize", {
+      height,
+      mode: currentMode,
+      width,
+    });
   }
 
   function applyModeStyles() {
@@ -224,6 +292,7 @@
     }
 
     currentMode = mode;
+    debugLog("loader.mode.set", { mode: currentMode });
     applyModeStyles();
     updateContainerSize();
   }
@@ -256,6 +325,7 @@
       applyModeStyles();
       updateContainerSize();
     }
+    debugLog("loader.visibility", { visible });
   }
 
   function normaliseShowOptions(options) {
@@ -281,7 +351,7 @@
           String(value)
             .split("")
             .map((char) =>
-              /[a-zA-Z0-9_-]/.test(char)
+              SAFE_SELECTOR_CHAR.test(char)
                 ? char
                 : `\\${char.charCodeAt(0).toString(16)} `
             )
@@ -359,6 +429,8 @@
     if (!target) {
       return {
         type: DOM_CONTEXT_EVENT,
+        path: hostPath,
+        url: hostUrl,
         selector: headlineSelector,
         text: null,
         originalText: originalHeadlineText,
@@ -369,6 +441,8 @@
     latestHeadlineText = target.textContent || "";
     return {
       type: DOM_CONTEXT_EVENT,
+      path: hostPath,
+      url: hostUrl,
       selector: deriveHeadlineSelector(target),
       text: latestHeadlineText,
       originalText:
@@ -381,6 +455,11 @@
 
   function sendHeadlineContext() {
     const context = buildHeadlineContext();
+    debugLog("loader.domContext.send", {
+      found: context.found,
+      selector: context.selector,
+      text: context.text,
+    });
     enqueue(context);
   }
 
@@ -390,11 +469,15 @@
 
     const target = findHeadlineElement();
     if (!target) {
+      debugLog("loader.domUpdate.error", {
+        reason: "not-found",
+      });
       postMessage({
         type: HEADLINE_UPDATED_EVENT,
         status: "error",
         reason: "not-found",
         requestId,
+        path: hostPath,
       });
       return;
     }
@@ -408,17 +491,26 @@
           : undefined;
 
     if (nextText === undefined) {
+      debugLog("loader.domUpdate.error", {
+        reason: "invalid-payload",
+      });
       postMessage({
         type: HEADLINE_UPDATED_EVENT,
         status: "error",
         reason: "invalid-payload",
         requestId,
+        path: hostPath,
       });
       return;
     }
 
     target.textContent = nextText;
     latestHeadlineText = target.textContent || "";
+    debugLog("loader.domUpdate.success", {
+      action: wantsReset ? "reset" : "update",
+      selector: deriveHeadlineSelector(target),
+      text: latestHeadlineText,
+    });
 
     postMessage({
       type: HEADLINE_UPDATED_EVENT,
@@ -427,10 +519,13 @@
       text: latestHeadlineText,
       requestId,
       action: wantsReset ? "reset" : "update",
+      path: hostPath,
     });
 
     enqueue({
       type: DOM_CONTEXT_EVENT,
+      path: hostPath,
+      url: hostUrl,
       selector: deriveHeadlineSelector(target),
       text: latestHeadlineText,
       originalText:
@@ -450,6 +545,7 @@
     const flag = params.get("hlt");
     if (flag === "1") {
       requestedReveal = true;
+      debugLog("loader.autoReveal", { mode: "chat" });
       api.show();
     }
   }
@@ -465,8 +561,26 @@
     }
 
     if (data.type === READY_EVENT) {
+      debugLog("loader.message.ready", {
+        experimentReady: data.experimentReady ?? null,
+        mode: data.mode ?? null,
+        siteName: data.siteName ?? null,
+        token: data.token ?? null,
+      });
+      if (typeof data.token === "string") {
+        iframeToken = data.token;
+      }
+      if (typeof data.siteName === "string") {
+        iframeSiteName = data.siteName;
+      }
+      if (typeof data.experimentReady === "boolean") {
+        experimentReady = data.experimentReady;
+      }
       ready = true;
       api[READY_ATTRIBUTE] = true;
+      if (typeof data.mode === "string") {
+        setMode(data.mode);
+      }
       updateContainerSize();
       flushQueue();
       autoRevealIfNeeded();
@@ -478,6 +592,13 @@
 
     if (data.type === MODE_EVENT) {
       const mode = data.mode;
+      if (typeof data.experimentReady === "boolean") {
+        experimentReady = data.experimentReady;
+      }
+      debugLog("loader.message.mode", {
+        experimentReady,
+        mode,
+      });
       if (
         mode === MODE_CHAT ||
         mode === MODE_LAUNCHER ||
@@ -489,11 +610,19 @@
     }
 
     if (data.type === DIMENSIONS_EVENT) {
+      debugLog("loader.message.dimensions", {
+        height: data.height ?? null,
+        width: data.width ?? null,
+      });
       handleDimensionsMessage(data);
       return;
     }
 
     if (data.type === UPDATE_HEADLINE_EVENT) {
+      debugLog("loader.message.updateHeadline", {
+        reset: data.reset === true,
+        text: typeof data.text === "string" ? data.text : null,
+      });
       runWhenDomReady(() => {
         handleUpdateHeadlineMessage(data);
       });
@@ -501,6 +630,7 @@
     }
 
     if (data.type === REQUEST_DOM_CONTEXT_EVENT) {
+      debugLog("loader.message.requestDomContext", {});
       runWhenDomReady(() => {
         sendHeadlineContext();
       });
@@ -524,6 +654,7 @@
     mountWhenReady();
     const normalized = normaliseShowOptions(options);
     requestedReveal = true;
+    debugLog("loader.api.show", { open: normalized.open === true });
     setMode(normalized.open ? MODE_CHAT : MODE_LAUNCHER);
     setVisible(true);
     enqueue(
@@ -533,6 +664,7 @@
   };
   api.hide = () => {
     requestedReveal = false;
+    debugLog("loader.api.hide");
     enqueue({ type: HIDE_EVENT });
     setMode(MODE_HIDDEN);
     setVisible(false);
@@ -544,6 +676,27 @@
     enumerable: true,
     get() {
       return ready;
+    },
+  });
+  Object.defineProperty(api, "experimentReady", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      return experimentReady;
+    },
+  });
+  Object.defineProperty(api, "token", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      return iframeToken || token;
+    },
+  });
+  Object.defineProperty(api, "siteName", {
+    configurable: false,
+    enumerable: true,
+    get() {
+      return iframeSiteName || null;
     },
   });
 

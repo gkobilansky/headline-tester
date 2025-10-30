@@ -9,10 +9,15 @@ import type {
 } from "@/components/widget-headline-controls";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { cn, generateUUID } from "@/lib/utils";
+import type { WidgetConfig } from "@/lib/widget-config";
+
+type DebuggableWindow = Window & {
+  HeadlineTesterWidgetDebug?: boolean;
+};
 
 type WidgetRootProps = {
   initialReveal?: boolean;
-  widgetToken?: string;
+  config: WidgetConfig;
 };
 
 type WidgetHeadlineEvent =
@@ -28,6 +33,20 @@ type WidgetHeadlineEvent =
       action: "update" | "reset";
       text: string | null;
       selector: string | null;
+    }
+  | {
+      id: string;
+      type: "experiment-saved";
+      selector: string | null;
+      path: string | null;
+      controlHeadline: string | null;
+      variantHeadline: string | null;
+      status: "draft" | "active" | "paused";
+    }
+  | {
+      id: string;
+      type: "experiment-error";
+      message: string;
     };
 
 const READY_EVENT = "headlineTester:ready";
@@ -62,10 +81,38 @@ function normaliseMessage(data: WidgetMessage) {
   return { type: undefined };
 }
 
-export function WidgetRoot({
-  initialReveal = false,
-  widgetToken,
-}: WidgetRootProps) {
+export function WidgetRoot({ initialReveal = false, config }: WidgetRootProps) {
+  const widgetToken = config.token;
+  const [experiment, setExperiment] = useState(config.experiment);
+  const experimentReady = Boolean(experiment?.variantHeadline);
+  const debugEnabled = useMemo(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const debuggableWindow = window as DebuggableWindow;
+    if (debuggableWindow.HeadlineTesterWidgetDebug === true) {
+      return true;
+    }
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("debug") === "1" || params.get("hltDebug") === "1";
+    } catch (_error) {
+      return false;
+    }
+  }, []);
+  const debugLog = useCallback(
+    (label: string, payload?: unknown) => {
+      if (!debugEnabled || typeof console === "undefined") {
+        return;
+      }
+      if (typeof payload === "undefined") {
+        console.info(`[HeadlineTester][widget] ${label}`);
+      } else {
+        console.info(`[HeadlineTester][widget] ${label}`, payload);
+      }
+    },
+    [debugEnabled]
+  );
   const [launcherVisible, setLauncherVisible] = useState(initialReveal);
   const [chatOpen, setChatOpen] = useState(initialReveal);
   const [headlineContext, setHeadlineContext] = useState<WidgetHeadlineContext>(
@@ -74,12 +121,18 @@ export function WidgetRoot({
       text: null,
       originalText: null,
       found: false,
+      path: config.experiment?.path ?? null,
+      url: null,
     }
   );
   const [headlineStatus, setHeadlineStatus] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
   const [headlineError, setHeadlineError] = useState<string | null>(null);
+  const [experimentStatus, setExperimentStatus] = useState<
+    "idle" | "saving" | "success" | "error"
+  >("idle");
+  const [experimentError, setExperimentError] = useState<string | null>(null);
   const [showHeadlineControls, setShowHeadlineControls] = useState(false);
   const [headlineEvents, setHeadlineEvents] = useState<WidgetHeadlineEvent[]>(
     []
@@ -90,6 +143,9 @@ export function WidgetRoot({
   const statusResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const headlineContextRef = useRef<WidgetHeadlineContext>(headlineContext);
+  const hostPathRef = useRef<string | null>(config.experiment?.path ?? null);
+  const hostUrlRef = useRef<string | null>(null);
   const collapsed = launcherVisible && !chatOpen;
 
   if (!chatIdRef.current) {
@@ -102,6 +158,10 @@ export function WidgetRoot({
       setChatOpen(true);
     }
   }, [initialReveal]);
+
+  useEffect(() => {
+    headlineContextRef.current = headlineContext;
+  }, [headlineContext]);
 
   const enqueueHeadlineEvent = useCallback((event: WidgetHeadlineEvent) => {
     setHeadlineEvents((events) => [...events, event]);
@@ -116,42 +176,54 @@ export function WidgetRoot({
     );
   }, []);
 
-  const postMode = useCallback((mode: "hidden" | "launcher" | "chat") => {
-    window.parent?.postMessage({ mode, type: MODE_EVENT }, "*");
-  }, []);
+  const postMode = useCallback(
+    (mode: "hidden" | "launcher" | "chat") => {
+      debugLog("widget.mode.post", { experimentReady, mode });
+      window.parent?.postMessage(
+        { experimentReady, mode, type: MODE_EVENT },
+        "*"
+      );
+    },
+    [debugLog, experimentReady]
+  );
 
   const showLauncher = useCallback(
     (openChat: boolean) => {
+      debugLog("widget.launcher.show", { openChat });
       postMode(openChat ? "chat" : "launcher");
       setLauncherVisible(true);
       if (openChat) {
         setChatOpen(true);
       }
     },
-    [postMode]
+    [debugLog, postMode]
   );
 
   const hideWidget = useCallback(() => {
+    debugLog("widget.launcher.hide");
     postMode("hidden");
     setChatOpen(false);
     setLauncherVisible(false);
-  }, [postMode]);
+  }, [debugLog, postMode]);
 
   const handleLauncherClick = useCallback(() => {
+    debugLog("widget.launcher.click");
     postMode("chat");
     setLauncherVisible(true);
     setChatOpen(true);
-  }, [postMode]);
+  }, [debugLog, postMode]);
 
   const handleClose = useCallback(() => {
+    debugLog("widget.close");
     postMode("launcher");
     setLauncherVisible(true);
     setChatOpen(false);
-  }, [postMode]);
+  }, [debugLog, postMode]);
 
   const requestDomContext = useCallback(() => {
+    debugLog("widget.requestDomContext");
     window.parent?.postMessage({ type: REQUEST_DOM_CONTEXT_EVENT }, "*");
-  }, []);
+  }, [debugLog]);
 
   const handleRewritePrompt = useCallback(
     (requestedHeadline?: string) => {
@@ -171,6 +243,9 @@ export function WidgetRoot({
         text: base,
         selector: headlineContext.selector ?? null,
       });
+      debugLog("widget.rewrite.request", {
+        selector: headlineContext.selector ?? null,
+      });
       setHeadlineError(null);
       setHeadlineStatus((current) =>
         current === "pending" ? current : "idle"
@@ -182,12 +257,14 @@ export function WidgetRoot({
       headlineContext.originalText,
       headlineContext.selector,
       headlineContext.text,
+      debugLog,
     ]
   );
 
   const applyHeadlineUpdate = useCallback(
     (nextHeadline: string) => {
       if (pendingRequestIdRef.current) {
+        debugLog("widget.headline.apply.skip", { reason: "pending" });
         return;
       }
 
@@ -195,6 +272,7 @@ export function WidgetRoot({
       if (!trimmed) {
         setHeadlineStatus("error");
         setHeadlineError("Headline cannot be empty.");
+        debugLog("widget.headline.apply.error", { reason: "empty" });
         return;
       }
 
@@ -208,6 +286,12 @@ export function WidgetRoot({
       pendingRequestIdRef.current = requestId;
       setHeadlineStatus("pending");
       setHeadlineError(null);
+      debugLog("widget.headline.apply.send", {
+        requestId,
+        selector: headlineContext.selector ?? null,
+      });
+      setExperimentStatus("idle");
+      setExperimentError(null);
       window.parent?.postMessage(
         {
           type: UPDATE_HEADLINE_EVENT,
@@ -217,17 +301,19 @@ export function WidgetRoot({
         "*"
       );
     },
-    [headlineContext.text]
+    [debugLog, headlineContext.selector, headlineContext.text]
   );
 
   const resetHeadline = useCallback(() => {
     if (pendingRequestIdRef.current) {
+      debugLog("widget.headline.reset.skip", { reason: "pending" });
       return;
     }
 
     if (!headlineContext.originalText) {
       setHeadlineStatus("error");
       setHeadlineError("No saved headline to restore.");
+      debugLog("widget.headline.reset.error", { reason: "missing-original" });
       return;
     }
 
@@ -235,6 +321,10 @@ export function WidgetRoot({
     pendingRequestIdRef.current = requestId;
     setHeadlineStatus("pending");
     setHeadlineError(null);
+    debugLog("widget.headline.reset.send", {
+      requestId,
+      selector: headlineContext.selector ?? null,
+    });
     window.parent?.postMessage(
       {
         type: UPDATE_HEADLINE_EVENT,
@@ -243,7 +333,155 @@ export function WidgetRoot({
       },
       "*"
     );
-  }, [headlineContext.originalText]);
+    setExperimentStatus("idle");
+    setExperimentError(null);
+  }, [debugLog, headlineContext.originalText, headlineContext.selector]);
+
+  const persistExperiment = useCallback(
+    async ({
+      action,
+      selector,
+      variantHeadline,
+      controlHeadline,
+      path,
+    }: {
+      action: "update" | "reset";
+      selector: string | null;
+      variantHeadline: string | null;
+      controlHeadline: string | null;
+      path: string | null;
+    }) => {
+      if (!config.controlToken) {
+        debugLog("widget.experiment.persist.skip", {
+          reason: "missing-control-token",
+        });
+        setExperimentStatus("error");
+        const message =
+          "Widget control token is not configured—persistence disabled.";
+        setExperimentError(message);
+        enqueueHeadlineEvent({
+          id: generateUUID(),
+          type: "experiment-error",
+          message,
+        });
+        return;
+      }
+
+      const effectivePath =
+        path ??
+        hostPathRef.current ??
+        headlineContext.path ??
+        (typeof window !== "undefined" ? window.location.pathname : "/") ??
+        "/";
+
+      if (!effectivePath) {
+        debugLog("widget.experiment.persist.skip", { reason: "missing-path" });
+        return;
+      }
+
+      if (!controlHeadline) {
+        debugLog("widget.experiment.persist.skip", {
+          reason: "missing-control-headline",
+        });
+        return;
+      }
+
+      if (action === "update" && !variantHeadline) {
+        debugLog("widget.experiment.persist.skip", {
+          reason: "missing-variant-headline",
+        });
+        return;
+      }
+
+      if (typeof fetch !== "function") {
+        debugLog("widget.experiment.persist.skip", { reason: "no-fetch" });
+        return;
+      }
+
+      setExperimentStatus("saving");
+      setExperimentError(null);
+
+      try {
+        const response = await fetch("/api/widget/experiments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.controlToken}`,
+          },
+          body: JSON.stringify({
+            token: widgetToken,
+            path: effectivePath,
+            selector,
+            controlHeadline,
+            variantHeadline,
+            action,
+          }),
+        });
+
+        if (!response.ok) {
+          let message = `Request failed with status ${response.status}`;
+          try {
+            const payload = await response.json();
+            if (payload && typeof payload.message === "string") {
+              message = payload.message;
+            }
+          } catch (_error) {
+            // ignore parse errors
+          }
+          throw new Error(message);
+        }
+
+        const data = await response.json();
+        const savedExperiment = data?.experiment ?? null;
+
+        hostPathRef.current = savedExperiment?.path ?? effectivePath;
+
+        if (savedExperiment) {
+          setExperiment(savedExperiment);
+        } else if (action === "reset") {
+          setExperiment(null);
+        }
+
+        setExperimentStatus("success");
+        setExperimentError(null);
+        enqueueHeadlineEvent({
+          id: generateUUID(),
+          type: "experiment-saved",
+          selector: savedExperiment?.selector ?? selector ?? null,
+          path: savedExperiment?.path ?? effectivePath,
+          controlHeadline:
+            savedExperiment?.controlHeadline ?? controlHeadline ?? null,
+          variantHeadline:
+            savedExperiment?.variantHeadline ?? variantHeadline ?? null,
+          status:
+            savedExperiment?.status ??
+            (action === "reset" ? "paused" : "draft"),
+        });
+        debugLog("widget.experiment.persist.success", {
+          action,
+          path: savedExperiment?.path ?? effectivePath,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to save experiment.";
+        setExperimentStatus("error");
+        setExperimentError(message);
+        enqueueHeadlineEvent({
+          id: generateUUID(),
+          type: "experiment-error",
+          message,
+        });
+        debugLog("widget.experiment.persist.error", { message });
+      }
+    },
+    [
+      config.controlToken,
+      debugLog,
+      enqueueHeadlineEvent,
+      headlineContext.path,
+      widgetToken,
+    ]
+  );
 
   useEffect(() => {
     const mode = chatOpen ? "chat" : launcherVisible ? "launcher" : "hidden";
@@ -306,6 +544,10 @@ export function WidgetRoot({
         const typed = data as Record<string, unknown> & { type: string };
 
         if (typed.type === DOM_CONTEXT_EVENT) {
+          debugLog("widget.message.domContext", {
+            found: typed.found !== false,
+            selector: typed.selector ?? null,
+          });
           setHeadlineContext((prev) => {
             const selector =
               typeof typed.selector === "string"
@@ -319,12 +561,29 @@ export function WidgetRoot({
                 : (prev.originalText ?? text ?? null);
             const found =
               typed.found === false ? false : Boolean(text ?? original);
+            const path =
+              typeof typed.path === "string"
+                ? typed.path
+                : (prev.path ?? hostPathRef.current ?? null);
+            const url =
+              typeof typed.url === "string"
+                ? typed.url
+                : (prev.url ?? hostUrlRef.current ?? null);
+
+            if (typeof path === "string") {
+              hostPathRef.current = path;
+            }
+            if (typeof typed.url === "string") {
+              hostUrlRef.current = typed.url;
+            }
 
             return {
               selector,
               text,
               originalText: original,
               found,
+              path,
+              url,
             };
           });
 
@@ -364,6 +623,30 @@ export function WidgetRoot({
           pendingRequestIdRef.current = null;
 
           if (typed.status === "success") {
+            const action = typed.action === "reset" ? "reset" : "update";
+            const currentContext = headlineContextRef.current;
+            const selectorFromMessage =
+              typeof typed.selector === "string"
+                ? typed.selector
+                : currentContext.selector;
+            const textFromMessage =
+              typeof typed.text === "string" ? typed.text : currentContext.text;
+            const controlHeadline =
+              currentContext.originalText ?? currentContext.text ?? null;
+            const pathFromMessage =
+              typeof typed.path === "string"
+                ? typed.path
+                : (currentContext.path ?? hostPathRef.current ?? null);
+
+            if (typeof typed.path === "string") {
+              hostPathRef.current = typed.path;
+            }
+
+            debugLog("widget.message.headlineUpdated", {
+              action,
+              selector: selectorFromMessage ?? null,
+              path: pathFromMessage ?? null,
+            });
             setHeadlineStatus("success");
             setHeadlineError(null);
             setHeadlineContext((prev) => {
@@ -374,10 +657,15 @@ export function WidgetRoot({
               const text =
                 typeof typed.text === "string" ? typed.text : prev.text;
               const original = prev.originalText ?? text ?? null;
+              const path =
+                typeof typed.path === "string"
+                  ? typed.path
+                  : (prev.path ?? hostPathRef.current ?? null);
+              const url = prev.url ?? hostUrlRef.current ?? null;
               enqueueHeadlineEvent({
                 id: generateUUID(),
                 type: "applied",
-                action: typed.action === "reset" ? "reset" : "update",
+                action,
                 text,
                 selector: selector ?? null,
               });
@@ -386,7 +674,17 @@ export function WidgetRoot({
                 text,
                 originalText: original,
                 found: true,
+                path,
+                url,
               };
+            });
+            persistExperiment({
+              action,
+              selector: selectorFromMessage ?? null,
+              variantHeadline:
+                action === "reset" ? null : (textFromMessage ?? null),
+              controlHeadline,
+              path: pathFromMessage,
             });
 
             if (typeof typed.text !== "string") {
@@ -399,6 +697,18 @@ export function WidgetRoot({
                 : "Unable to update the headline.";
             setHeadlineStatus("error");
             setHeadlineError(reason);
+            setExperimentStatus("error");
+            setExperimentError(reason);
+            enqueueHeadlineEvent({
+              id: generateUUID(),
+              type: "experiment-error",
+              message: reason,
+            });
+            debugLog("widget.message.headlineUpdated", {
+              action: typed.action === "reset" ? "reset" : "update",
+              reason,
+              status: "error",
+            });
           }
 
           return;
@@ -412,24 +722,48 @@ export function WidgetRoot({
 
       if (message.type === SHOW_EVENT) {
         const shouldOpen = message.open === true || message.mode === "open";
+        debugLog("widget.message.show", { shouldOpen });
         showLauncher(shouldOpen);
       } else if (message.type === HIDE_EVENT) {
+        debugLog("widget.message.hide");
         hideWidget();
       }
     };
 
     window.addEventListener("message", handleMessage);
-    window.parent?.postMessage({ type: READY_EVENT }, "*");
+    const initialMode = initialReveal ? "chat" : "hidden";
+    debugLog("widget.ready", {
+      experimentReady,
+      initialMode,
+      siteName: config.siteName,
+      token: widgetToken,
+    });
+    window.parent?.postMessage(
+      {
+        experimentReady,
+        mode: initialMode,
+        siteName: config.siteName,
+        token: widgetToken,
+        type: READY_EVENT,
+      },
+      "*"
+    );
     requestDomContext();
 
     return () => {
       window.removeEventListener("message", handleMessage);
     };
   }, [
+    config.siteName,
+    debugLog,
     enqueueHeadlineEvent,
+    experimentReady,
     hideWidget,
+    initialReveal,
+    persistExperiment,
     requestDomContext,
     showLauncher,
+    widgetToken,
   ]);
 
   const launchButton = launcherVisible && !chatOpen;
@@ -470,7 +804,9 @@ export function WidgetRoot({
       context: headlineContext,
       status: headlineStatus,
       error: headlineError,
-      isPending: headlineStatus === "pending",
+      isPending: headlineStatus === "pending" || experimentStatus === "saving",
+      experimentStatus,
+      experimentError,
       onApply: applyHeadlineUpdate,
       onReset: resetHeadline,
       onRewrite: handleRewritePrompt,
@@ -479,6 +815,8 @@ export function WidgetRoot({
       headlineContext,
       headlineStatus,
       headlineError,
+      experimentStatus,
+      experimentError,
       applyHeadlineUpdate,
       resetHeadline,
       handleRewritePrompt,
@@ -501,9 +839,11 @@ export function WidgetRoot({
       onStart: handleStartHeadlineTest,
       controls: headlineControls,
       onRewrite: () => handleRewritePrompt(),
-      canRewrite: Boolean(
-        (headlineContext.text ?? headlineContext.originalText ?? "").trim()
-      ),
+      canRewrite:
+        experimentStatus !== "saving" &&
+        Boolean(
+          (headlineContext.text ?? headlineContext.originalText ?? "").trim()
+        ),
     }),
     [
       showHeadlineControls,
@@ -512,6 +852,7 @@ export function WidgetRoot({
       handleRewritePrompt,
       headlineContext.text,
       headlineContext.originalText,
+      experimentStatus,
     ]
   );
 
@@ -548,8 +889,9 @@ export function WidgetRoot({
                 isWidget
                 key={chatId}
                 onWidgetHeadlineEventsConsumed={handleHeadlineEventsConsumed}
-                widgetHeadlineStarter={widgetHeadlineStarter}
+                widgetConfig={config}
                 widgetHeadlineEvents={headlineEvents}
+                widgetHeadlineStarter={widgetHeadlineStarter}
                 widgetToken={widgetToken}
               />
             </div>

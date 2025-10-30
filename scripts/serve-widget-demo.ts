@@ -18,12 +18,17 @@ const MIME_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".ico": "image/x-icon",
 };
+const PARENT_PATH_PATTERN = /^(\.\.[/\\])+/;
 
 const server = createServer(async (request, response) => {
   const url = request.url ?? "/";
-  const { pathname = "/" } = parse(url);
+  const { pathname } = parse(url);
+  const safePathname = typeof pathname === "string" ? pathname : "/";
 
-  const normalisedPath = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
+  const normalisedPath = normalize(safePathname).replace(
+    PARENT_PATH_PATTERN,
+    ""
+  );
   let filePath = join(ROOT, normalisedPath);
 
   try {

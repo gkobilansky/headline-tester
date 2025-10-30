@@ -20,8 +20,9 @@ development you can point to `http://localhost:3000`.
 <script src="http://localhost:3000/widget/embed.js" data-token="demo"></script>
 ```
 
-- `data-token` is optional during Phase&nbsp;2; if omitted the loader defaults to
-  the hard-coded `demo` token. Token validation will arrive in Phase&nbsp;3.
+- `data-token` is required. Missing or unknown tokens cause the iframe route to
+  return 404 so visitors never see an unconfigured widget. The `demo` token
+  remains available for local testing.
 - The loader is idempotent. Including the tag multiple times on the same page
   will noop after the first successful boot.
 
@@ -57,12 +58,34 @@ window.HeadlineTesterWidget.hide();
 
 // Inspect readiness (true after the iframe posts headlineTester:ready).
 window.HeadlineTesterWidget.ready;
+
+// Metadata populated after the iframe validates and shares its token.
+window.HeadlineTesterWidget.token; // iframe token (validated server-side)
+window.HeadlineTesterWidget.siteName; // workspace label tied to the token
+window.HeadlineTesterWidget.experimentReady; // bool flag for experiment data
 ```
 
 Calls made before the iframe is ready are queued and replayed after the
 handshake completes, so you do not need to wait on load events manually.
 
-## 4. Behaviour Notes
+## 4. Enable Debug Logging
+
+Turn on runtime logging when you need to trace the handshake between the host
+page, loader, and iframe:
+
+- Add `data-debug="true"` to the loader script tag (for example,
+  `<script src="…/widget/embed.js" data-token="demo" data-debug="true"></script>`).
+- Append `?hltDebug=1` to the host page URL.
+- Toggle `window.HeadlineTesterWidgetDebug = true` from the browser console
+  (works for both the host page and the iframe when they share the same origin).
+
+With debugging enabled, the loader prints messages such as
+`[HeadlineTester][loader] loader.message.ready` whenever handshake events fire,
+while the iframe emits `[HeadlineTester][widget] …` logs as it processes
+incoming messages and posts updates back to the parent. Disable logging again by
+removing the attribute/query flag or setting the global flag to `false`.
+
+## 5. Behaviour Notes
 
 - The embed injects a fixed-position iframe anchored to the bottom-right corner
   of the viewport. When hidden it detaches pointer events; when shown it enables
@@ -73,7 +96,7 @@ handshake completes, so you do not need to wait on load events manually.
 - Future phases will replace the demo token with domain-scoped validation and
   extend the control channel (e.g. structured configuration, context payloads).
 
-## 5. Update the Demo Headline
+## 6. Update the Demo Headline
 
 Once the iframe signals readiness the loader shares the page headline with the
 widget. The editor panel above the chat displays the selector and copy so you
@@ -92,7 +115,27 @@ can iterate in place.
 All edits remain local to the browser for now—refreshing the page reverts to the
 original markup until persistence lands in a later phase.
 
-## 6. Admin Testing Checklist
+## 7. Loader ↔ Widget Messaging
+
+`public/widget/embed.js` and the iframe coordinate exclusively through
+`postMessage`. The contract established in Phase&nbsp;4 includes:
+
+- `headlineTester:ready` — emitted once the iframe boots. Payload includes the
+  validated `token`, `siteName`, current `mode`, and `experimentReady` flag.
+- `headlineTester:mode` — fires whenever the iframe switches between
+  `hidden`, `launcher`, or `chat`, mirroring the latest `experimentReady`
+  status for the host page.
+- `headlineTester:dimensions` — carries `{ width, height }` so the loader can
+  resize the anchored container without querying the iframe DOM.
+- `headlineTester:domContext` — loader → iframe payload containing the detected
+  headline selector, original copy, and current text content.
+- `headlineTester:updateHeadline` / `headlineTester:headlineUpdated` —
+  request/acknowledgement pair for DOM mutations on the host page.
+
+Future API surface area (experiment hydration, analytics) will extend these
+payloads without renaming the events, keeping third-party integrations stable.
+
+## 8. Admin Testing Checklist
 
 1. Embed the script on a static page and confirm nothing renders until you use
    the URL flag or control API.
@@ -104,7 +147,7 @@ original markup until persistence lands in a later phase.
    transcript notes the change before using **Reset** to return to the original
    copy.
 
-## 7. What’s Next
+## 9. What’s Next
 
 Upcoming phases will introduce experiment persistence, visitor bucketing, and
 telemetry so admins can launch and monitor tests without leaving the chat.
