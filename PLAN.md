@@ -161,7 +161,7 @@ Enable the demo embed to share headline context with the widget and let admins o
 
 ---
 
-## Phase 4: Config, Token Flow & Controls
+## Phase 4: Config, Token Flow & Controls *(Completed)*
 
 ### Overview
 Stub token validation, hydrate the widget with server-provided config (including any active experiment shell), and harden the `postMessage` handshake so loader-driven reveals and future controls stay reliable.
@@ -191,9 +191,9 @@ Stub token validation, hydrate the widget with server-provided config (including
 ### Success Criteria:
 
 #### Automated Verification
-- [ ] `pnpm lint`
+- [x] `pnpm lint`
 - [ ] `pnpm test`
-- [ ] `pnpm build`
+- [x] `pnpm build`
 
 #### Manual Verification
 - [ ] Invalid token blocks widget rendering.
