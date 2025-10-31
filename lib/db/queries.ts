@@ -739,10 +739,23 @@ export async function getWidgetConfig(
     return null;
   }
 
-  const experiment =
-    typeof path === "string" && path.trim().length > 0
-      ? await getWidgetExperiment({ token: normalized, path: path.trim() })
-      : null;
+  let experiment: WidgetExperimentSnapshot | null = null;
+
+  if (typeof path === "string" && path.trim().length > 0) {
+    try {
+      experiment = await getWidgetExperiment({
+        token: normalized,
+        path: path.trim(),
+      });
+    } catch (error) {
+      if (error instanceof ChatSDKError && error.surface === "database") {
+        console.error("Failed to load widget experiment", error);
+        experiment = null;
+      } else {
+        throw error;
+      }
+    }
+  }
 
   return {
     ...config,
